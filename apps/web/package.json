@@ -11,19 +11,16 @@
     "dev:bare": "vp dev"
   },
   "dependencies": {
-    "@ai-sdk/react": "^4.0.44",
     "@notetaker-app/env": "workspace:*",
     "@notetaker-app/ui": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-router": "^1.170.18",
-    "ai": "catalog:",
     "dotenv": "catalog:",
     "lucide-react": "catalog:",
     "next-themes": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "sonner": "catalog:",
-    "streamdown": "^2.5.0",
     "zod": "catalog:"
   },
   "devDependencies": {

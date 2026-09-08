@@ -8,12 +8,10 @@
     "compile": "bun build --compile --minify --sourcemap --bytecode ./src/index.ts --outfile server"
   },
   "dependencies": {
-    "@ai-sdk/devtools": "^1.0.8",
-    "@ai-sdk/google": "^4.0.27",
     "@notetaker-app/db": "workspace:*",
     "@notetaker-app/env": "workspace:*",
-    "ai": "catalog:",
     "dotenv": "catalog:",
+    "effect": "4.0.0-rc.112",
     "hono": "^4.12.32",
     "zod": "catalog:"
   },

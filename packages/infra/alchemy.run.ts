@@ -10,7 +10,7 @@ config({ path: "../../apps/server/.env" });
 
 export const server = Cloudflare.Worker("server", {
 	compatibility: {
-		flags: ["nodejs_compat"],
+		flags: ["nodejs_compat", "enable_request_signal"],
 	},
 	dev: {
 		port: 3000,
@@ -19,9 +19,6 @@ export const server = Cloudflare.Worker("server", {
 		AI: Cloudflare.Workers.AI(),
 		CORS_ORIGIN: Config.string("CORS_ORIGIN"),
 		DATABASE_URL: Config.redacted("DATABASE_URL"),
-		GOOGLE_GENERATIVE_AI_API_KEY: Config.redacted(
-			"GOOGLE_GENERATIVE_AI_API_KEY"
-		),
 	},
 	main: "../../apps/server/src/index.ts",
 });
