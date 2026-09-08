@@ -9,47 +9,47 @@ config({ path: "../../apps/web/.env" });
 config({ path: "../../apps/server/.env" });
 
 export const server = Cloudflare.Worker("server", {
-  main: "../../apps/server/src/index.ts",
-  compatibility: {
-    flags: ["nodejs_compat"],
-  },
-  env: {
-    DATABASE_URL: Config.redacted("DATABASE_URL"),
-    CORS_ORIGIN: Config.string("CORS_ORIGIN"),
-    GOOGLE_GENERATIVE_AI_API_KEY: Config.redacted("GOOGLE_GENERATIVE_AI_API_KEY"),
-  },
-  dev: {
-    port: 3000,
-  },
+	compatibility: {
+		flags: ["nodejs_compat", "enable_request_signal"],
+	},
+	dev: {
+		port: 3000,
+	},
+	env: {
+		AI: Cloudflare.Workers.AI(),
+		CORS_ORIGIN: Config.string("CORS_ORIGIN"),
+		DATABASE_URL: Config.redacted("DATABASE_URL"),
+	},
+	main: "../../apps/server/src/index.ts",
 });
 
 export type ServerEnv = Cloudflare.InferEnv<typeof server>;
 
 export default Alchemy.Stack(
-  "notetaker-app",
-  {
-    providers: Cloudflare.providers(),
-    state: Cloudflare.state(),
-  },
-  Effect.gen(function* () {
-    const serverWorker = yield* server;
-    const webWorker = yield* Cloudflare.Website.Vite("web", {
-      rootDir: "../../apps/web",
-      assets: {
-        htmlHandling: "auto-trailing-slash",
-        notFoundHandling: "single-page-application",
-      },
-      env: {
-        VITE_SERVER_URL: serverWorker.url.as<string>(),
-      },
-      dev: {
-        port: 3001,
-      },
-    });
+	"notetaker-app",
+	{
+		providers: Cloudflare.providers(),
+		state: Cloudflare.state(),
+	},
+	Effect.gen(function* () {
+		const serverWorker = yield* server;
+		const webWorker = yield* Cloudflare.Website.Vite("web", {
+			assets: {
+				htmlHandling: "auto-trailing-slash",
+				notFoundHandling: "single-page-application",
+			},
+			dev: {
+				port: 3001,
+			},
+			env: {
+				VITE_SERVER_URL: serverWorker.url.as<string>(),
+			},
+			rootDir: "../../apps/web",
+		});
 
-    return {
-      web: webWorker.url,
-      server: serverWorker.url,
-    };
-  }),
+		return {
+			server: serverWorker.url,
+			web: webWorker.url,
+		};
+	})
 );

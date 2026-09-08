@@ -9,6 +9,7 @@ This project was created with [Better-T-Stack](https://github.com/AmanVarshney01
 - **TailwindCSS** - Utility-first CSS for rapid UI development
 - **Shared UI package** - shadcn/ui primitives live in `packages/ui`
 - **Hono** - Lightweight, performant server framework
+- **Effect** - Effect 4 RC workflow and typed expected failures for transcription
 - **workers** - Runtime environment
 - **Drizzle** - TypeScript-first ORM
 - **PostgreSQL** - Database engine
@@ -67,9 +68,31 @@ Import shared components like this:
 import { Button } from "@notetaker-app/ui/components/button";
 ```
 
+### Incremental Coss UI adoption
+
+The shared Button at `packages/ui/src/components/button.tsx` uses the official Coss registry implementation, merged with the existing Base UI-compatible public API. Its loading indicator is the official Coss Spinner at `packages/ui/src/components/spinner.tsx`, and the required Coss destructive foreground tokens live in `packages/ui/src/styles/globals.css`.
+
+Preview or update the component from the repository root with the project pnpm runner:
+
+```bash
+pnpm dlx shadcn@latest add @coss/button --dry-run -c packages/ui
+pnpm dlx shadcn@latest add @coss/button --diff src/components/button.tsx -c packages/ui
+pnpm dlx shadcn@latest add @coss/button -c packages/ui
+```
+
+Review the dry-run and diff before merging updates. Do not use `--overwrite`, because the existing shared Button has callers outside the Coss registry's generated file.
+
 ### Add app-specific blocks
 
 If you want to add app-specific blocks instead of shared primitives, run the shadcn CLI from `apps/web`.
+
+## Speech-to-text demo
+
+The `/transcribe` page includes a small accessible upload form that sends audio directly to `POST /transcribe`. The endpoint accepts a raw, non-empty request body with an `audio/*` Content-Type and enforces a 4 MiB maximum using both Content-Length and streamed byte length. The Worker reads at most 4 MiB + 1 byte before cancelling an oversized stream. This conservative limit leaves room for Whisper's required `number[]` input within the Workers 128 MB isolate limit. When browsers provide an empty file MIME type, the UI only resolves known `.aac`, `.flac`, `.m4a`, `.mp3`, `.oga`, `.ogg`, `.opus`, `.wav`, and `.webm` extensions. A successful response is JSON in the form `{ "text": "..." }`. Errors use `{ "error": { "code": "...", "message": "..." } }` and do not expose provider details.
+
+The server Worker receives its typed Workers AI binding from Alchemy with `AI: Cloudflare.Workers.AI()` in `packages/infra/alchemy.run.ts`. It calls the Cloudflare-hosted `@cf/openai/whisper` model. The complete validation, bounded body read, and provider workflow is an Effect program using the published `effect@4.0.0-rc.112` release. Expected failures are mapped to the fixed API error contract before the program is run at the Hono handler boundary. This repository deliberately has no Wrangler configuration for the binding: Alchemy is the infrastructure source of truth, and credentials remain in the trusted runtime environment rather than source files.
+
+Workers AI inference is remote during local development and can incur usage charges. Do not use the upload form for local smoke tests unless remote inference is intentionally configured. No recording, persistence, authentication, response streaming, deployment, or credentials are included in this example.
 
 ## Deployment
 
@@ -111,6 +134,11 @@ notetaker-app/
 │   └── db/          # Database schema & queries
 ```
 
+The server keeps the Hono adapter in `apps/server/src/index.ts` and mounts focused
+route modules from `apps/server/src/routes/health.ts` and
+`apps/server/src/routes/transcribe.ts`. The web app exposes the home page and the
+accessible `/transcribe` UI, which calls the `/transcribe` API endpoint.
+
 ## Available Scripts
 
 - `pnpm run dev`: Start all applications in development mode
@@ -122,7 +150,7 @@ notetaker-app/
 - `pnpm run db:generate`: Generate database client/types
 - `pnpm run db:migrate`: Run database migrations
 - `pnpm run db:studio`: Open database studio UI
-- `pnpm run check`: Run Vite+ format/lint checks and workspace TypeScript checks
+- `pnpm run check`: Run Ultracite format and lint checks
 - `pnpm run lint`: Run Vite+ lint checks
 - `pnpm run format`: Run Vite+ formatting
 - `pnpm run staged`: Run Vite+ checks against staged files
