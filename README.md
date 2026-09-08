@@ -67,9 +67,31 @@ Import shared components like this:
 import { Button } from "@notetaker-app/ui/components/button";
 ```
 
+### Incremental Coss UI adoption
+
+The shared Button at `packages/ui/src/components/button.tsx` uses the official Coss registry implementation, merged with the existing Base UI-compatible public API. Its loading indicator is the official Coss Spinner at `packages/ui/src/components/spinner.tsx`, and the required Coss destructive foreground tokens live in `packages/ui/src/styles/globals.css`.
+
+Preview or update the component from the repository root with the project pnpm runner:
+
+```bash
+pnpm dlx shadcn@latest add @coss/button --dry-run -c packages/ui
+pnpm dlx shadcn@latest add @coss/button --diff src/components/button.tsx -c packages/ui
+pnpm dlx shadcn@latest add @coss/button -c packages/ui
+```
+
+Review the dry-run and diff before merging updates. Do not use `--overwrite`, because the existing shared Button has callers outside the Coss registry's generated file.
+
 ### Add app-specific blocks
 
 If you want to add app-specific blocks instead of shared primitives, run the shadcn CLI from `apps/web`.
+
+## Speech-to-text demo
+
+The AI page includes a small accessible upload form that sends audio directly to `POST /transcribe`. The endpoint accepts a raw, non-empty request body with an `audio/*` Content-Type and enforces a 4 MiB maximum using both Content-Length and streamed byte length. The Worker reads at most 4 MiB + 1 byte before cancelling an oversized stream. This conservative limit leaves room for Whisper's required `number[]` input within the Workers 128 MB isolate limit. When browsers provide an empty file MIME type, the UI only resolves known `.aac`, `.flac`, `.m4a`, `.mp3`, `.oga`, `.ogg`, `.opus`, `.wav`, and `.webm` extensions. A successful response is JSON in the form `{ "text": "..." }`. Errors use `{ "error": { "code": "...", "message": "..." } }` and do not expose provider details.
+
+The server Worker receives its typed Workers AI binding from Alchemy with `AI: Cloudflare.Workers.AI()` in `packages/infra/alchemy.run.ts`. It calls the Cloudflare-hosted `@cf/openai/whisper` model. This repository deliberately has no Wrangler configuration for the binding: Alchemy is the infrastructure source of truth, and credentials remain in the trusted runtime environment rather than source files.
+
+Workers AI inference is remote during local development and can incur usage charges. Do not use the upload form for local smoke tests unless remote inference is intentionally configured. No recording, persistence, authentication, response streaming, deployment, or credentials are included in this example.
 
 ## Deployment
 
