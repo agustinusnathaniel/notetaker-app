@@ -1,0 +1,55 @@
+import * as Alchemy from "alchemy";
+import * as Cloudflare from "alchemy/Cloudflare";
+import { config } from "dotenv";
+import * as Config from "effect/Config";
+import * as Effect from "effect/Effect";
+
+config({ path: "./.env" });
+config({ path: "../../apps/web/.env" });
+config({ path: "../../apps/server/.env" });
+
+export const server = Cloudflare.Worker("server", {
+  main: "../../apps/server/src/index.ts",
+  compatibility: {
+    flags: ["nodejs_compat"],
+  },
+  env: {
+    DATABASE_URL: Config.redacted("DATABASE_URL"),
+    CORS_ORIGIN: Config.string("CORS_ORIGIN"),
+    GOOGLE_GENERATIVE_AI_API_KEY: Config.redacted("GOOGLE_GENERATIVE_AI_API_KEY"),
+  },
+  dev: {
+    port: 3000,
+  },
+});
+
+export type ServerEnv = Cloudflare.InferEnv<typeof server>;
+
+export default Alchemy.Stack(
+  "notetaker-app",
+  {
+    providers: Cloudflare.providers(),
+    state: Cloudflare.state(),
+  },
+  Effect.gen(function* () {
+    const serverWorker = yield* server;
+    const webWorker = yield* Cloudflare.Website.Vite("web", {
+      rootDir: "../../apps/web",
+      assets: {
+        htmlHandling: "auto-trailing-slash",
+        notFoundHandling: "single-page-application",
+      },
+      env: {
+        VITE_SERVER_URL: serverWorker.url.as<string>(),
+      },
+      dev: {
+        port: 3001,
+      },
+    });
+
+    return {
+      web: webWorker.url,
+      server: serverWorker.url,
+    };
+  }),
+);

@@ -1,0 +1,47 @@
+{
+  "name": "notetaker-app",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "vp run -r dev",
+    "build": "vp run -r build",
+    "check-types": "vp run -r check-types",
+    "check": "ultracite check",
+    "lint": "vp lint",
+    "format": "vp fmt",
+    "staged": "vp staged",
+    "hooks:setup": "vp config",
+    "dev:web": "vp run --filter web dev:bare",
+    "dev:server": "vp run --filter server dev:bare",
+    "db:push": "vp run --filter @notetaker-app/db db:push",
+    "db:studio": "vp run --filter @notetaker-app/db db:studio",
+    "db:generate": "vp run --filter @notetaker-app/db db:generate",
+    "db:migrate": "vp run --filter @notetaker-app/db db:migrate",
+    "deploy": "vp run --filter @notetaker-app/infra deploy",
+    "destroy": "vp run --filter @notetaker-app/infra destroy",
+    "fix": "ultracite fix"
+  },
+  "dependencies": {
+    "@notetaker-app/env": "workspace:*",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.9",
+    "@cloudflare/workers-types": "catalog:",
+    "@notetaker-app/config": "workspace:*",
+    "@types/node": "catalog:",
+    "rolldown": "1.2.6",
+    "typescript": "catalog:",
+    "ultracite": "7.10.7",
+    "vite-plus": "0.3.0"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.3.0"
+  },
+  "packageManager": "pnpm@12.3.4"
+}
