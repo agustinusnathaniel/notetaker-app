@@ -24,6 +24,8 @@ import {
 	formatDuration,
 	isNotFoundError,
 	type PublicMeeting,
+	requestSummary,
+	requestTranscription,
 } from "@/lib/meetings";
 
 export const Route = createFileRoute("/meetings/$meetingId")({
@@ -49,9 +51,123 @@ const FAILED_STAGE_LABELS: Record<string, string> = {
 	upload: "upload",
 };
 
+type RetryStage = "idle" | "transcribing" | "summarizing";
+
+interface FailedMeetingViewProps {
+	readonly meeting: PublicMeeting;
+	readonly onReload: () => void;
+	readonly onRetrySummary: () => void;
+	readonly onRetryTranscription: () => void;
+	readonly retryError: string | null;
+	readonly retryStage: RetryStage;
+}
+
+function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
+	const {
+		meeting,
+		onReload,
+		onRetrySummary,
+		onRetryTranscription,
+		retryError,
+		retryStage,
+	} = props;
+	const stageLabel =
+		(meeting.failedStage && FAILED_STAGE_LABELS[meeting.failedStage]) ??
+		"processing";
+	const canRetryTranscription =
+		meeting.failedStage === "transcription" && meeting.audioAvailable;
+	const canRetrySummary =
+		meeting.failedStage === "summary" &&
+		typeof meeting.transcript === "string" &&
+		meeting.transcript.trim().length > 0;
+	const isRetrying = retryStage !== "idle";
+	const describedBy = retryError ? "meeting-retry-error" : undefined;
+	return (
+		<main className="container mx-auto w-full max-w-3xl px-4 py-6">
+			<section aria-labelledby="meeting-title" className="flex flex-col gap-4">
+				<Card>
+					<CardHeader>
+						{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h1 with the meeting title as content. */}
+						<CardTitle render={<h1 />}>{meeting.title}</CardTitle>
+						<CardDescription>
+							{formatDate(meeting.occurredAt)} ·{" "}
+							{formatDuration(meeting.durationSeconds)}
+						</CardDescription>
+						<p className="mt-1">
+							<span className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs">
+								Failed during {stageLabel}
+							</span>
+						</p>
+					</CardHeader>
+					<CardPanel>
+						<div className="flex flex-col gap-3">
+							<p className="text-sm">
+								Processing failed during {stageLabel}.{" "}
+								{canRetryTranscription || canRetrySummary
+									? "You can retry this step below."
+									: "Upload a new file from the new-meeting flow to try again."}
+							</p>
+							{isRetrying ? (
+								<p aria-live="polite" className="text-sm" role="status">
+									{retryStage === "transcribing"
+										? "Retrying transcription…"
+										: "Retrying summary…"}
+								</p>
+							) : null}
+							{retryError ? (
+								<p
+									className="text-destructive text-sm"
+									id="meeting-retry-error"
+									role="alert"
+								>
+									{retryError}
+								</p>
+							) : null}
+							<div className="flex flex-wrap gap-2">
+								{canRetryTranscription ? (
+									<Button
+										aria-describedby={describedBy}
+										disabled={isRetrying}
+										loading={retryStage === "transcribing"}
+										onClick={onRetryTranscription}
+									>
+										Retry transcription
+									</Button>
+								) : null}
+								{canRetrySummary ? (
+									<Button
+										aria-describedby={describedBy}
+										disabled={isRetrying}
+										loading={retryStage === "summarizing"}
+										onClick={onRetrySummary}
+									>
+										Retry summary
+									</Button>
+								) : null}
+								<Button
+									disabled={isRetrying}
+									onClick={onReload}
+									variant="outline"
+								>
+									Reload
+								</Button>
+							</div>
+						</div>
+					</CardPanel>
+				</Card>
+				<Button render={<Link to="/" />} variant="outline">
+					Back Home
+				</Button>
+			</section>
+		</main>
+	);
+}
+
 function MeetingDetail(): React.ReactElement {
 	const { meetingId } = Route.useParams();
 	const [state, setState] = useState<DetailState>({ status: "loading" });
+	const [retryStage, setRetryStage] = useState<RetryStage>("idle");
+	const [retryError, setRetryError] = useState<string | null>(null);
 
 	const load = useCallback(
 		(signal?: AbortSignal) => {
@@ -91,8 +207,52 @@ function MeetingDetail(): React.ReactElement {
 	}, [load]);
 
 	const handleRetry = useCallback(() => {
+		setRetryError(null);
+		setRetryStage("idle");
 		load();
 	}, [load]);
+
+	const handleRetryTranscription = useCallback(async (): Promise<void> => {
+		setRetryStage("transcribing");
+		setRetryError(null);
+		try {
+			const updated = await requestTranscription(meetingId);
+			setRetryStage("idle");
+			setState({ status: "ready", meeting: updated });
+		} catch (error: unknown) {
+			setRetryStage("idle");
+			setRetryError(
+				error instanceof Error
+					? error.message
+					: "Transcription retry failed. Please try again."
+			);
+		}
+	}, [meetingId]);
+
+	const handleRetrySummary = useCallback(async (): Promise<void> => {
+		setRetryStage("summarizing");
+		setRetryError(null);
+		try {
+			const updated = await requestSummary(meetingId);
+			setRetryStage("idle");
+			setState({ status: "ready", meeting: updated });
+		} catch (error: unknown) {
+			setRetryStage("idle");
+			setRetryError(
+				error instanceof Error
+					? error.message
+					: "Summary retry failed. Please try again."
+			);
+		}
+	}, [meetingId]);
+
+	const handleRetryTranscriptionClick = useCallback((): void => {
+		handleRetryTranscription().catch(() => undefined);
+	}, [handleRetryTranscription]);
+
+	const handleRetrySummaryClick = useCallback((): void => {
+		handleRetrySummary().catch(() => undefined);
+	}, [handleRetrySummary]);
 
 	if (state.status === "loading") {
 		return (
@@ -151,41 +311,15 @@ function MeetingDetail(): React.ReactElement {
 	const { meeting } = state;
 
 	if (meeting.status === "failed") {
-		const stageLabel =
-			(meeting.failedStage && FAILED_STAGE_LABELS[meeting.failedStage]) ??
-			"processing";
 		return (
-			<main className="container mx-auto w-full max-w-3xl px-4 py-6">
-				<section
-					aria-labelledby="meeting-title"
-					className="flex flex-col gap-4"
-				>
-					<Card>
-						<CardHeader>
-							{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h1 with the meeting title as content. */}
-							<CardTitle render={<h1 />}>{meeting.title}</CardTitle>
-							<CardDescription>
-								{formatDate(meeting.occurredAt)} ·{" "}
-								{formatDuration(meeting.durationSeconds)}
-							</CardDescription>
-							<p className="mt-1">
-								<span className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs">
-									Failed during {stageLabel}
-								</span>
-							</p>
-						</CardHeader>
-						<CardPanel>
-							<p className="text-sm">
-								Processing failed during {stageLabel}. You can retry this step
-								once the new-meeting flow is available.
-							</p>
-						</CardPanel>
-					</Card>
-					<Button render={<Link to="/" />} variant="outline">
-						Back Home
-					</Button>
-				</section>
-			</main>
+			<FailedMeetingView
+				meeting={meeting}
+				onReload={handleRetry}
+				onRetrySummary={handleRetrySummaryClick}
+				onRetryTranscription={handleRetryTranscriptionClick}
+				retryError={retryError}
+				retryStage={retryStage}
+			/>
 		);
 	}
 
