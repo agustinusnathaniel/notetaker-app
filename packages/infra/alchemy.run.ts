@@ -31,6 +31,7 @@ export const server = Cloudflare.Worker("server", {
 		CORS_ORIGIN: Config.string("CORS_ORIGIN"),
 		DATABASE_URL: Config.redacted("DATABASE_URL"),
 		DEEPGRAM_API_KEY: Config.redacted("DEEPGRAM_API_KEY"),
+		GROQ_API_KEY: Config.redacted("GROQ_API_KEY"),
 	},
 	main: "../../apps/server/src/index.ts",
 });

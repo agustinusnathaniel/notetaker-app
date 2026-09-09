@@ -10,7 +10,12 @@ import { desc, eq } from "drizzle-orm";
 import { Effect } from "effect";
 import { Hono } from "hono";
 import { z } from "zod";
-
+import {
+	buildAnalysisMessages,
+	buildAnalysisPrompt,
+	type MeetingAnalysis,
+	parseMeetingAnalysis,
+} from "../lib/analysis";
 import {
 	DEEPGRAM_LISTEN_URL,
 	normalizeDeepgramResponse,
@@ -75,6 +80,19 @@ interface TranscriptionUnavailable {
 	readonly cause: unknown;
 }
 
+interface SummaryUnavailable {
+	readonly _tag: "SummaryUnavailable";
+	readonly cause: unknown;
+}
+
+interface MissingTranscript {
+	readonly _tag: "MissingTranscript";
+}
+
+interface InvalidSummaryStatus {
+	readonly _tag: "InvalidSummaryStatus";
+}
+
 interface StorageFailure {
 	readonly _tag: "StorageFailure";
 	readonly cause: unknown;
@@ -90,8 +108,11 @@ type MeetingsError =
 	| InvalidContentLength
 	| InvalidMeetingId
 	| InvalidStatus
+	| InvalidSummaryStatus
 	| MeetingNotFound
+	| MissingTranscript
 	| StorageFailure
+	| SummaryUnavailable
 	| TranscriptionUnavailable
 	| UnsupportedMediaType;
 
@@ -108,6 +129,7 @@ interface HttpError {
 		| "audio_not_found"
 		| "conflict"
 		| "transcription_unavailable"
+		| "summary_unavailable"
 		| "internal_error";
 	readonly message: string;
 	readonly status: 400 | 404 | 409 | 413 | 415 | 500 | 502;
@@ -237,6 +259,18 @@ function invalidStatus(): InvalidStatus {
 
 function transcriptionUnavailable(cause: unknown): TranscriptionUnavailable {
 	return { _tag: "TranscriptionUnavailable", cause };
+}
+
+function summaryUnavailable(cause: unknown): SummaryUnavailable {
+	return { _tag: "SummaryUnavailable", cause };
+}
+
+function missingTranscript(): MissingTranscript {
+	return { _tag: "MissingTranscript" };
+}
+
+function invalidSummaryStatus(): InvalidSummaryStatus {
+	return { _tag: "InvalidSummaryStatus" };
 }
 
 function storageFailure(
@@ -576,6 +610,240 @@ function transcribeMeeting(
 	);
 }
 
+function markSummaryFailed(meetingId: string): Effect.Effect<void, never> {
+	return Effect.tryPromise({
+		try: async (): Promise<void> => {
+			const db = createDb();
+			await db
+				.update(meetings)
+				.set({
+					failedStage: "summary",
+					status: "failed",
+					updatedAt: new Date(),
+				})
+				.where(eq(meetings.id, meetingId));
+		},
+		catch: (): unknown => null,
+	}).pipe(Effect.ignore);
+}
+
+function canSummarize(
+	status: Meeting["status"],
+	failedStage: Meeting["failedStage"]
+): boolean {
+	if (status === "summarizing") {
+		return true;
+	}
+
+	return status === "failed" && failedStage === "summary";
+}
+
+const WORKERS_AI_SUMMARY_MODEL =
+	"@cf/meta/llama-3.3-70b-instruct-fp8-fast" as const;
+const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_SUMMARY_MODEL = "llama-3.3-70b-versatile";
+
+const GroqChatResponseSchema = z.object({
+	choices: z
+		.array(z.object({ message: z.object({ content: z.string().nullable() }) }))
+		.min(1),
+});
+
+async function runWorkersAiSummary(
+	prompt: string
+): Promise<MeetingAnalysis | null> {
+	const output = await env.AI.run(WORKERS_AI_SUMMARY_MODEL, {
+		prompt,
+		response_format: { type: "json_object" },
+	});
+	if (typeof output === "string") {
+		return parseMeetingAnalysis(output);
+	}
+	if (
+		typeof output === "object" &&
+		output !== null &&
+		"response" in output &&
+		typeof output.response === "string"
+	) {
+		return parseMeetingAnalysis(output.response);
+	}
+
+	return null;
+}
+
+async function runGroqSummary(
+	transcript: string,
+	signal: AbortSignal
+): Promise<MeetingAnalysis | null> {
+	const apiKey = env.GROQ_API_KEY;
+	if (typeof apiKey !== "string" || apiKey.length === 0) {
+		return null;
+	}
+
+	const response = await fetch(GROQ_CHAT_URL, {
+		body: JSON.stringify({
+			messages: buildAnalysisMessages(transcript),
+			model: GROQ_SUMMARY_MODEL,
+			response_format: { type: "json_object" },
+		}),
+		headers: {
+			Authorization: `Bearer ${apiKey}`,
+			"Content-Type": "application/json",
+		},
+		method: "POST",
+		signal,
+	});
+	if (!response.ok) {
+		return null;
+	}
+
+	const payload: unknown = await response.json();
+	const parsed = GroqChatResponseSchema.safeParse(payload);
+	const [choice] = parsed.success ? parsed.data.choices : [];
+	const content = choice?.message.content?.trim() ?? "";
+	if (!content) {
+		return null;
+	}
+
+	return parseMeetingAnalysis(content);
+}
+
+function runSummaryProvider(
+	transcript: string
+): Effect.Effect<MeetingAnalysis, SummaryUnavailable> {
+	const fromWorkersAi = Effect.tryPromise({
+		try: () => runWorkersAiSummary(buildAnalysisPrompt(transcript)),
+		catch: summaryUnavailable,
+	}).pipe(
+		Effect.flatMap((analysis) =>
+			analysis
+				? Effect.succeed(analysis)
+				: Effect.fail(
+						summaryUnavailable("Workers AI returned an unusable summary.")
+					)
+		)
+	);
+	const fromGroq = Effect.tryPromise({
+		try: (signal) => runGroqSummary(transcript, signal),
+		catch: summaryUnavailable,
+	}).pipe(
+		Effect.flatMap((analysis) =>
+			analysis
+				? Effect.succeed(analysis)
+				: Effect.fail(summaryUnavailable("Groq returned an unusable summary."))
+		)
+	);
+
+	return fromWorkersAi.pipe(Effect.catch(() => fromGroq));
+}
+
+interface SummaryContext {
+	readonly db: Db;
+	readonly meetingId: string;
+	readonly transcript: string;
+}
+
+function runSummaryProviderAndPersist(
+	context: SummaryContext
+): Effect.Effect<Outcome<PublicMeeting>, StorageFailure | SummaryUnavailable> {
+	return Effect.gen(function* () {
+		const analysis = yield* runSummaryProvider(context.transcript);
+
+		const rows = yield* Effect.tryPromise({
+			try: () =>
+				context.db
+					.update(meetings)
+					.set({
+						actionItems: analysis.actionItems,
+						description: analysis.description,
+						failedStage: null,
+						status: "completed",
+						summary: analysis.summary,
+						takeaways: analysis.takeaways,
+						title: analysis.title,
+						updatedAt: new Date(),
+					})
+					.where(eq(meetings.id, context.meetingId))
+					.returning(),
+			catch: (cause): StorageFailure =>
+				storageFailure(cause, context.meetingId),
+		});
+
+		const [persisted] = rows;
+		if (!persisted) {
+			return yield* Effect.fail(
+				summaryUnavailable("The meeting disappeared during summarization.")
+			);
+		}
+
+		return { data: toPublicMeeting(persisted), kind: "success" } as const;
+	});
+}
+
+function summarizeMeeting(
+	meetingIdParam: string
+): Effect.Effect<Outcome<PublicMeeting>, never> {
+	const program = Effect.gen(function* () {
+		const meetingId = yield* parseMeetingId(meetingIdParam);
+		const db = yield* makeDb();
+		const row = yield* findMeetingById(db, meetingId);
+		const transcript = row.transcript?.trim() ?? "";
+		if (!transcript) {
+			return yield* Effect.fail(missingTranscript());
+		}
+		if (!canSummarize(row.status, row.failedStage)) {
+			return yield* Effect.fail(invalidSummaryStatus());
+		}
+
+		const marked = yield* Effect.tryPromise({
+			try: () =>
+				db
+					.update(meetings)
+					.set({
+						failedStage: null,
+						status: "summarizing",
+						updatedAt: new Date(),
+					})
+					.where(eq(meetings.id, meetingId))
+					.returning(),
+			catch: (cause): StorageFailure => storageFailure(cause, meetingId),
+		});
+
+		const [current] = marked;
+		if (!current) {
+			return yield* Effect.fail(meetingNotFound());
+		}
+
+		return yield* runSummaryProviderAndPersist({
+			db,
+			meetingId,
+			transcript,
+		}).pipe(
+			Effect.catch((error: StorageFailure | SummaryUnavailable) =>
+				Effect.gen(function* () {
+					yield* markSummaryFailed(meetingId);
+					return { error: toHttpError(error), kind: "error" } as const;
+				})
+			)
+		);
+	});
+
+	return program.pipe(
+		Effect.catchTags({
+			InvalidMeetingId: (error) =>
+				Effect.succeed({ error: toHttpError(error), kind: "error" } as const),
+			MeetingNotFound: (error) =>
+				Effect.succeed({ error: toHttpError(error), kind: "error" } as const),
+			MissingTranscript: (error) =>
+				Effect.succeed({ error: toHttpError(error), kind: "error" } as const),
+			InvalidSummaryStatus: (error) =>
+				Effect.succeed({ error: toHttpError(error), kind: "error" } as const),
+			StorageFailure: (error) =>
+				Effect.succeed({ error: toHttpError(error), kind: "error" } as const),
+		})
+	);
+}
+
 async function cancelAudioReader(
 	reader: ReadableStreamDefaultReader<Uint8Array>
 ): Promise<void> {
@@ -766,6 +1034,24 @@ function toHttpError(error: MeetingsError): HttpError {
 				code: "transcription_unavailable",
 				message: "Transcription is temporarily unavailable.",
 				status: 502,
+			};
+		case "SummaryUnavailable":
+			return {
+				code: "summary_unavailable",
+				message: "Summary generation is temporarily unavailable.",
+				status: 502,
+			};
+		case "MissingTranscript":
+			return {
+				code: "conflict",
+				message: "No transcript is available to summarize yet.",
+				status: 409,
+			};
+		case "InvalidSummaryStatus":
+			return {
+				code: "conflict",
+				message: "The meeting cannot be summarized in its current state.",
+				status: 409,
 			};
 		case "StorageFailure":
 			return {
@@ -1086,6 +1372,35 @@ meetingsRouter.post("/api/meetings/:meetingId/transcription", async (c) => {
 	try {
 		outcome = await Effect.runPromise(
 			transcribeMeeting(c.req.param("meetingId")),
+			{ signal: c.req.raw.signal }
+		);
+	} catch (error) {
+		if (
+			c.req.raw.signal.aborted &&
+			error instanceof Error &&
+			error.message === EFFECT_INTERRUPTION_MESSAGE
+		) {
+			return new Response(null, { status: 499 });
+		}
+
+		throw error;
+	}
+
+	if (outcome.kind === "error") {
+		return c.json(
+			{ error: { code: outcome.error.code, message: outcome.error.message } },
+			outcome.error.status
+		);
+	}
+
+	return c.json({ meeting: outcome.data });
+});
+
+meetingsRouter.post("/api/meetings/:meetingId/summary", async (c) => {
+	let outcome: Outcome<PublicMeeting>;
+	try {
+		outcome = await Effect.runPromise(
+			summarizeMeeting(c.req.param("meetingId")),
 			{ signal: c.req.raw.signal }
 		);
 	} catch (error) {
