@@ -93,6 +93,7 @@ import {
 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { MeetingMarkdown } from "@/components/markdown";
+import { MeetingAudioPlayer } from "@/components/meeting-audio-player";
 import {
 	type ActionItem,
 	audioUrlFor,
@@ -1316,15 +1317,7 @@ function MeetingDetail(): React.ReactElement {
 						>
 							Audio
 						</h2>
-						{/* biome-ignore lint/a11y/useMediaCaption: the transcript section below is the text alternative for this recording. */}
-						<audio
-							className="w-full max-w-full"
-							controls
-							preload="metadata"
-							src={audioUrl}
-						>
-							Your browser does not support audio playback.
-						</audio>
+						<MeetingAudioPlayer src={audioUrl} />
 					</section>
 				) : null}
 

@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { MeetingAudioPreview } from "@/components/meeting-audio-player";
 import {
 	createMeeting,
 	type MeetingSource,
@@ -707,10 +708,7 @@ function RecordingPanel(props: RecordingPanelProps): React.ReactElement {
 			/>
 			{recordedUrl && !isRecording ? (
 				<div className="flex flex-col gap-2">
-					{/* biome-ignore lint/a11y/useMediaCaption: preview plays the user's just-recorded audio; a transcript is generated after upload. */}
-					<audio controls src={recordedUrl}>
-						Your browser does not support audio preview.
-					</audio>
+					<MeetingAudioPreview src={recordedUrl} />
 					<div className="flex flex-wrap items-center gap-2">
 						<Button onClick={onDiscard} type="button" variant="outline">
 							<Trash2Icon aria-hidden="true" />
