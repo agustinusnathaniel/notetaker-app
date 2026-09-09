@@ -1,4 +1,4 @@
-import { Stack } from "alchemy";
+import { AdoptPolicy, Stack, Stage } from "alchemy";
 import type { InferEnv } from "alchemy/Cloudflare";
 import {
 	Worker as CloudflareWorker,
@@ -31,29 +31,43 @@ export const audioBucket = R2.Bucket("fft", {
 	name: "fft",
 }).pipe(retain());
 
-export const server = CloudflareWorker("server", {
-	compatibility: {
-		flags: ["nodejs_compat", "enable_request_signal"],
-	},
-	dev: {
-		port: 3000,
-	},
-	env: {
-		AI: Workers.AI(),
-		AUDIO_BUCKET: audioBucket,
-		CORS_EXTRA_ORIGINS: configWithDefault(
-			configString("CORS_EXTRA_ORIGINS"),
-			""
-		),
-		CORS_ORIGIN: configString("CORS_ORIGIN"),
-		DATABASE_URL: configRedacted("DATABASE_URL"),
-		DEEPGRAM_API_KEY: configRedacted("DEEPGRAM_API_KEY"),
-		GROQ_API_KEY: configWithDefault(
-			configRedacted("GROQ_API_KEY"),
-			makeRedacted("")
-		),
-	},
-	main: "../../apps/server/src/index.ts",
+export const server = gen(function* () {
+	const stage = yield* Stage;
+	const isProd = stage === "prod";
+	// Prod-only custom domain (zone sznm.dev is inferred from the hostname).
+	// Dev stages omit it and keep the workers.dev URL. workers.dev stays
+	// enabled in prod during the transition, and server.url (custom domain
+	// first) flows into the web build as VITE_SERVER_URL automatically.
+	return yield* CloudflareWorker("server", {
+		compatibility: {
+			flags: ["nodejs_compat", "enable_request_signal"],
+		},
+		dev: {
+			port: 3000,
+		},
+		domain: isProd ? "notetaker-api.sznm.dev" : undefined,
+		env: {
+			AI: Workers.AI(),
+			AUDIO_BUCKET: audioBucket,
+			CORS_EXTRA_ORIGINS: configWithDefault(
+				configString("CORS_EXTRA_ORIGINS"),
+				""
+			),
+			CORS_ORIGIN: configString("CORS_ORIGIN"),
+			DATABASE_URL: configRedacted("DATABASE_URL"),
+			DEEPGRAM_API_KEY: configRedacted("DEEPGRAM_API_KEY"),
+			GROQ_API_KEY: configWithDefault(
+				configRedacted("GROQ_API_KEY"),
+				makeRedacted("")
+			),
+		},
+		main: "../../apps/server/src/index.ts",
+	}).pipe(
+		// The hostname was first attached in the Cloudflare dashboard, so the
+		// first prod deploy adopts the pre-existing attachment instead of
+		// failing on conflict. Scoped to prod; dev keeps default behavior.
+		AdoptPolicy.adopt(isProd)
+	);
 });
 
 export type ServerEnv = InferEnv<typeof server>;
