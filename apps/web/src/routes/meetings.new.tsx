@@ -69,10 +69,11 @@ export const Route = createFileRoute("/meetings/new")({
 });
 
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
-// Warn at ~20 MiB so the speaker can wrap up before the hard cap stops capture.
+// Enforcement is binary bytes (26214400); user-facing copy labels it MB.
+// Warn at ~20 MB so the speaker can wrap up before the hard cap stops capture.
 const RECORD_WARN_BYTES = 20 * 1024 * 1024;
 // Capacity math (documented for the 1-2hr guidance below): Opus 32kbps is
-// 4KB/s, so 1hr is ~14.4MB and fits ~1.8hr in 25MiB. At 64kbps 1hr is
+// 4KB/s, so 1hr is ~14.4MB and fits ~1.8hr in 25 MB. At 64kbps 1hr is
 // ~28.8MB, exceeding the cap at ~55min. Chrome MediaRecorder defaults run
 // ~50-128kbps, capping recordings at ~27-60min. MP3 128k caps at ~27min,
 // WAV mono 16-bit/44.1kHz (~86KB/s) at ~5min, stereo at ~2.5min.
@@ -95,7 +96,7 @@ const SOURCE_DESCRIPTIONS: Record<AudioSourceTab, string> = {
 	record:
 		"Record audio with your microphone, then generate notes automatically.",
 	upload:
-		"Upload an audio file up to 25 MiB. Notes generate automatically, then you return to the meeting detail page. If you leave, retry from the meeting detail page.",
+		"Upload an audio file up to 25 MB. Notes generate automatically, then you return to the meeting detail page. If you leave, retry from the meeting detail page.",
 };
 
 const ALLOWED_MIME_TYPES: ReadonlySet<string> = new Set([
@@ -164,7 +165,7 @@ function validateAudioFile(file: File): string | null {
 		return "The selected file is empty. Choose a non-empty audio file.";
 	}
 	if (file.size > MAX_AUDIO_BYTES) {
-		return "Audio files must be 25 MiB or smaller.";
+		return "Audio files must be 25 MB or smaller.";
 	}
 	if (file.type) {
 		if (!ALLOWED_MIME_TYPES.has(mimeEssence(file.type))) {
@@ -218,7 +219,7 @@ function formatRecordingTime(totalSeconds: number): string {
 }
 
 function formatMegabytes(bytes: number): string {
-	return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function microphoneErrorMessage(error: unknown): string {
@@ -571,7 +572,7 @@ function UploadPanel(props: UploadPanelProps): React.ReactElement {
 				<EmptyTitle>Upload audio</EmptyTitle>
 				<EmptyDescription id="audio-file-description">
 					Upload an MP3, WAV, M4A, OGG, OPUS, FLAC, AAC, or WebM file up to 25
-					MiB.
+					MB.
 				</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent className="max-w-md">
@@ -586,7 +587,7 @@ function UploadPanel(props: UploadPanelProps): React.ReactElement {
 							>
 								<InfoIcon aria-hidden="true" className="size-3.5" />
 							</TooltipTrigger>
-							<TooltipContent>25 MiB max</TooltipContent>
+							<TooltipContent>25 MB max</TooltipContent>
 						</Tooltip>
 					</div>
 					<Input
@@ -650,8 +651,8 @@ function RecordingCapNotices({
 				<CircleAlertIcon />
 				<AlertTitle>Recording cap reached</AlertTitle>
 				<AlertDescription>
-					Recording stopped at the 25 MiB cap. Submit what you have below; the
-					server also enforces the 25 MiB limit.
+					Recording stopped at the 25 MB cap. Submit what you have below; the
+					server also enforces the 25 MB limit.
 				</AlertDescription>
 			</Alert>
 		);
@@ -662,7 +663,7 @@ function RecordingCapNotices({
 				<CircleAlertIcon />
 				<AlertTitle>Approaching the size limit</AlertTitle>
 				<AlertDescription>
-					Recording is at {formatMegabytes(recordedBytes)} of 25 MiB. Wrap up
+					Recording is at {formatMegabytes(recordedBytes)} of 25 MB. Wrap up
 					soon; recording stops automatically at the cap and you can submit what
 					you have.
 				</AlertDescription>
@@ -719,7 +720,7 @@ function RecordingPanel(props: RecordingPanelProps): React.ReactElement {
 					<p aria-live="polite" className="text-muted-foreground text-sm">
 						{timerLabel} {formatRecordingTime(recordingSeconds)}
 						{isRecording
-							? ` · ${formatMegabytes(recordedBytes)} / 25 MiB`
+							? ` · ${formatMegabytes(recordedBytes)} / 25 MB`
 							: null}
 					</p>
 				) : null}
@@ -754,7 +755,7 @@ function RecordingPanel(props: RecordingPanelProps): React.ReactElement {
 				</FieldError>
 			) : null}
 			<FieldDescription>
-				Recordings are stored as WebM or OGG up to 25 MiB. Opus at 32kbps fits
+				Recordings are stored as WebM or OGG up to 25 MB. Opus at 32kbps fits
 				about 1.8hr (14.4MB/hr); Chrome defaults (50-128kbps) cap at about
 				27-60min. Prefer a file? Switch to Upload instead.
 			</FieldDescription>
