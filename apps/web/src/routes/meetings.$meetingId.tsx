@@ -244,11 +244,9 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 			>
 				<CardFrame className="min-w-0 overflow-x-clip">
 					<CardFrameHeader className="px-4 max-sm:grid-cols-1! max-sm:gap-2 sm:px-6">
-						{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h1 with the meeting title as content. */}
 						<CardFrameTitle
 							className="self-start break-words font-heading text-xl sm:text-2xl"
 							id="meeting-title"
-							render={<h1 />}
 						>
 							{meeting.title}
 						</CardFrameTitle>
@@ -620,7 +618,7 @@ function DeleteMeetingDialog({
 		onDeletingChange?.(true);
 		deleteMeeting(meetingId)
 			.then(() => {
-				navigate({ to: "/" }).catch(() => undefined);
+				navigate({ to: "/" });
 			})
 			.catch((failure: unknown) => {
 				setDeleting(false);
@@ -752,11 +750,9 @@ function ProcessingMeetingView({
 			>
 				<CardFrame className="min-w-0 overflow-x-clip">
 					<CardFrameHeader className="px-4 max-sm:grid-cols-1! max-sm:gap-2 sm:px-6">
-						{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h1 with the meeting title as content. */}
 						<CardFrameTitle
 							className="self-start break-words font-heading text-xl sm:text-2xl"
 							id="meeting-title"
-							render={<h1 />}
 						>
 							{meeting.title}
 						</CardFrameTitle>
@@ -1273,11 +1269,9 @@ function MeetingDetail(): React.ReactElement {
 			>
 				<CardFrame className="min-w-0 overflow-x-clip">
 					<CardFrameHeader className="px-4 sm:px-6">
-						{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h1 with the meeting title as content. */}
 						<CardFrameTitle
 							className="self-start break-words font-heading text-xl sm:text-2xl"
 							id="meeting-title"
-							render={<h1 />}
 						>
 							{meeting.title}
 						</CardFrameTitle>
@@ -1299,7 +1293,7 @@ function MeetingDetail(): React.ReactElement {
 									title={meeting.title}
 								/>
 							</div>
-							<p className="text-muted-foreground text-xs">
+							<p className="text-xs">
 								Audio, transcript, and notes are kept together on this page.
 							</p>
 						</div>

@@ -112,8 +112,7 @@ function MeetingsLibrary(): React.ReactElement {
 			<section aria-labelledby="meetings-title" className="flex flex-col gap-4">
 				<CardFrame>
 					<CardFrameHeader>
-						{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h1 with the library title as content. */}
-						<CardFrameTitle id="meetings-title" render={<h1 />}>
+						<CardFrameTitle id="meetings-title" className="text-lg">
 							Meetings
 						</CardFrameTitle>
 						<CardFrameDescription>
@@ -130,7 +129,7 @@ function MeetingsLibrary(): React.ReactElement {
 					</CardFrameHeader>
 					{hasMeetings ? (
 						<CardFrameFooter className="border-t py-3">
-							<p className="text-muted-foreground text-xs">
+							<p className="text-xs">
 								{meetings?.length ?? 0}{" "}
 								{(meetings?.length ?? 0) === 1 ? "meeting" : "meetings"} ·
 								Sorted newest first.
@@ -227,7 +226,7 @@ function MeetingsLibrary(): React.ReactElement {
 										</Card>
 										<CardFrameFooter className="border-t py-3">
 											<div className="flex w-full min-w-0 items-center justify-between gap-2">
-												<div className="flex min-w-0 flex-wrap items-center gap-2 text-muted-foreground text-sm">
+												<div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
 													<span className="min-w-0 truncate">
 														{formatDate(meeting.occurredAt)} ·{" "}
 														{formatDuration(meeting.durationSeconds)}
@@ -236,7 +235,7 @@ function MeetingsLibrary(): React.ReactElement {
 												</div>
 												<ChevronRightIcon
 													aria-hidden="true"
-													className="size-4 shrink-0 text-muted-foreground"
+													className="size-4 shrink-0"
 												/>
 											</div>
 										</CardFrameFooter>
