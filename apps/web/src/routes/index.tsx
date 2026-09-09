@@ -28,6 +28,7 @@ import {
 	EmptyTitle,
 } from "@notetaker-app/ui/components/empty";
 import { Skeleton } from "@notetaker-app/ui/components/skeleton";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
 	ChevronRightIcon,
@@ -36,7 +37,7 @@ import {
 	PlusIcon,
 	RotateCcwIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo } from "react";
 import {
 	fetchMeetings,
 	formatDate,
@@ -47,11 +48,6 @@ import {
 export const Route = createFileRoute("/")({
 	component: MeetingsLibrary,
 });
-
-type LibraryState =
-	| { status: "loading" }
-	| { status: "error"; message: string }
-	| { status: "ready"; meetings: PublicMeeting[] };
 
 function sortNewestFirst(meetings: PublicMeeting[]): PublicMeeting[] {
 	return [...meetings].sort(
@@ -85,41 +81,31 @@ function MeetingStatusBadge({
 }
 
 function MeetingsLibrary(): React.ReactElement {
-	const [state, setState] = useState<LibraryState>({ status: "loading" });
+	const meetingsQuery = useQuery({
+		gcTime: 5 * 60 * 1000,
+		placeholderData: keepPreviousData,
+		queryFn: ({ signal }: { signal: AbortSignal }) => fetchMeetings(signal),
+		queryKey: ["meetings"],
+		refetchOnWindowFocus: true,
+		staleTime: 30 * 1000,
+	});
+	const meetings = useMemo(
+		() => (meetingsQuery.data ? sortNewestFirst(meetingsQuery.data) : null),
+		[meetingsQuery.data]
+	);
+	const hasData = meetings !== null;
+	const isFirstLoad = meetingsQuery.isPending && !hasData;
+	const isError = meetingsQuery.isError && !hasData;
+	const isEmpty = hasData && (meetings?.length ?? 0) === 0;
+	const hasMeetings = hasData && (meetings?.length ?? 0) > 0;
+	const errorMessage =
+		meetingsQuery.error instanceof Error
+			? meetingsQuery.error.message
+			: "Could not load meetings. Please try again.";
 
-	const load = useCallback((signal?: AbortSignal) => {
-		setState({ status: "loading" });
-		fetchMeetings(signal)
-			.then((meetings) => {
-				if (!signal?.aborted) {
-					setState({ status: "ready", meetings: sortNewestFirst(meetings) });
-				}
-			})
-			.catch((error: unknown) => {
-				if (signal?.aborted) {
-					return;
-				}
-				setState({
-					status: "error",
-					message:
-						error instanceof Error
-							? error.message
-							: "Could not load meetings. Please try again.",
-				});
-			});
-	}, []);
-
-	useEffect(() => {
-		const controller = new AbortController();
-		load(controller.signal);
-		return () => {
-			controller.abort();
-		};
-	}, [load]);
-
-	const handleRetry = useCallback(() => {
-		load();
-	}, [load]);
+	const handleRetry = useCallback((): void => {
+		meetingsQuery.refetch().catch(() => undefined);
+	}, [meetingsQuery]);
 
 	return (
 		<main className="container mx-auto w-full max-w-3xl px-4 py-6">
@@ -133,7 +119,7 @@ function MeetingsLibrary(): React.ReactElement {
 						<CardFrameDescription>
 							Review recordings, transcripts, and notes.
 						</CardFrameDescription>
-						{state.status === "ready" && state.meetings.length > 0 ? (
+						{hasMeetings ? (
 							<CardFrameAction>
 								<Button render={<Link to="/meetings/new" />} size="sm">
 									<PlusIcon aria-hidden="true" />
@@ -142,18 +128,18 @@ function MeetingsLibrary(): React.ReactElement {
 							</CardFrameAction>
 						) : null}
 					</CardFrameHeader>
-					{state.status === "ready" && state.meetings.length > 0 ? (
+					{hasMeetings ? (
 						<CardFrameFooter className="border-t py-3">
 							<p className="text-muted-foreground text-xs">
-								{state.meetings.length}{" "}
-								{state.meetings.length === 1 ? "meeting" : "meetings"} · Sorted
-								newest first.
+								{meetings?.length ?? 0}{" "}
+								{(meetings?.length ?? 0) === 1 ? "meeting" : "meetings"} ·
+								Sorted newest first.
 							</p>
 						</CardFrameFooter>
 					) : null}
 				</CardFrame>
 
-				{state.status === "loading" ? (
+				{isFirstLoad ? (
 					<div
 						aria-label="Loading meetings"
 						className="flex flex-col gap-3"
@@ -180,11 +166,11 @@ function MeetingsLibrary(): React.ReactElement {
 					</div>
 				) : null}
 
-				{state.status === "error" ? (
+				{isError ? (
 					<Alert variant="error">
 						<CircleAlertIcon />
 						<AlertTitle>Could not load meetings</AlertTitle>
-						<AlertDescription>{state.message}</AlertDescription>
+						<AlertDescription>{errorMessage}</AlertDescription>
 						<AlertAction>
 							<Button onClick={handleRetry} size="sm" variant="outline">
 								Retry
@@ -193,7 +179,7 @@ function MeetingsLibrary(): React.ReactElement {
 					</Alert>
 				) : null}
 
-				{state.status === "ready" && state.meetings.length === 0 ? (
+				{isEmpty ? (
 					<Empty>
 						<EmptyHeader>
 							<EmptyMedia variant="icon">
@@ -218,9 +204,9 @@ function MeetingsLibrary(): React.ReactElement {
 					</Empty>
 				) : null}
 
-				{state.status === "ready" && state.meetings.length > 0 ? (
+				{hasMeetings ? (
 					<ul className="flex list-none flex-col gap-3 p-0">
-						{state.meetings.map((meeting) => (
+						{(meetings ?? []).map((meeting) => (
 							<li key={meeting.id}>
 								<Link
 									className="block rounded-2xl focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"

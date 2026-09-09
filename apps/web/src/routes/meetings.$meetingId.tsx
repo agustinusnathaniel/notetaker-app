@@ -73,6 +73,11 @@ import {
 	TabsTab,
 } from "@notetaker-app/ui/components/tabs";
 import { Textarea } from "@notetaker-app/ui/components/textarea";
+import {
+	keepPreviousData,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
 	ChevronLeftIcon,
@@ -108,11 +113,8 @@ export const Route = createFileRoute("/meetings/$meetingId")({
 	component: MeetingDetail,
 });
 
-type DetailState =
-	| { status: "loading" }
-	| { status: "not-found" }
-	| { status: "error"; message: string }
-	| { status: "ready"; meeting: PublicMeeting };
+const MEETING_STALE_TIME = 30 * 1000;
+const MEETING_GC_TIME = 5 * 60 * 1000;
 
 const PROCESSING_STATUSES: ReadonlySet<PublicMeeting["status"]> = new Set([
 	"draft",
@@ -980,54 +982,28 @@ function TranscriptSegmentsList({
 
 function MeetingDetail(): React.ReactElement {
 	const { meetingId } = Route.useParams();
-	const [state, setState] = useState<DetailState>({ status: "loading" });
+	const queryClient = useQueryClient();
+	const meetingQuery = useQuery({
+		gcTime: MEETING_GC_TIME,
+		placeholderData: keepPreviousData,
+		queryFn: ({ signal }: { signal: AbortSignal }) =>
+			fetchMeeting(meetingId, signal),
+		queryKey: ["meeting", meetingId],
+		refetchOnWindowFocus: true,
+		retry: (failureCount: number, error: unknown) =>
+			!isNotFoundError(error) && failureCount < 1,
+		staleTime: MEETING_STALE_TIME,
+	});
 	const [retryStage, setRetryStage] = useState<RetryStage>("idle");
 	const [retryError, setRetryError] = useState<string | null>(null);
 	const [togglingId, setTogglingId] = useState<string | null>(null);
 	const [actionError, setActionError] = useState<string | null>(null);
 
-	const load = useCallback(
-		(signal?: AbortSignal) => {
-			setState({ status: "loading" });
-			fetchMeeting(meetingId, signal)
-				.then((loaded) => {
-					if (!signal?.aborted) {
-						setState({ status: "ready", meeting: loaded });
-					}
-				})
-				.catch((error: unknown) => {
-					if (signal?.aborted) {
-						return;
-					}
-					if (isNotFoundError(error)) {
-						setState({ status: "not-found" });
-						return;
-					}
-					setState({
-						status: "error",
-						message:
-							error instanceof Error
-								? error.message
-								: "Could not load this meeting. Please try again.",
-					});
-				});
-		},
-		[meetingId]
-	);
-
-	useEffect(() => {
-		const controller = new AbortController();
-		load(controller.signal);
-		return () => {
-			controller.abort();
-		};
-	}, [load]);
-
 	const handleRetry = useCallback(() => {
 		setRetryError(null);
 		setRetryStage("idle");
-		load();
-	}, [load]);
+		meetingQuery.refetch().catch(() => undefined);
+	}, [meetingQuery]);
 
 	const handleRetryTranscription = useCallback(async (): Promise<void> => {
 		setRetryStage("transcribing");
@@ -1035,7 +1011,7 @@ function MeetingDetail(): React.ReactElement {
 		try {
 			const updated = await requestTranscription(meetingId);
 			setRetryStage("idle");
-			setState({ status: "ready", meeting: updated });
+			queryClient.setQueryData(["meeting", meetingId], updated);
 		} catch (error: unknown) {
 			setRetryStage("idle");
 			setRetryError(
@@ -1044,7 +1020,7 @@ function MeetingDetail(): React.ReactElement {
 					: "Transcription retry failed. Please try again."
 			);
 		}
-	}, [meetingId]);
+	}, [meetingId, queryClient]);
 
 	const handleRetrySummary = useCallback(async (): Promise<void> => {
 		setRetryStage("summarizing");
@@ -1052,7 +1028,7 @@ function MeetingDetail(): React.ReactElement {
 		try {
 			const updated = await requestSummary(meetingId);
 			setRetryStage("idle");
-			setState({ status: "ready", meeting: updated });
+			queryClient.setQueryData(["meeting", meetingId], updated);
 		} catch (error: unknown) {
 			setRetryStage("idle");
 			setRetryError(
@@ -1061,7 +1037,7 @@ function MeetingDetail(): React.ReactElement {
 					: "Summary retry failed. Please try again."
 			);
 		}
-	}, [meetingId]);
+	}, [meetingId, queryClient]);
 
 	const handleRetryTranscriptionClick = useCallback((): void => {
 		handleRetryTranscription().catch(() => undefined);
@@ -1071,9 +1047,12 @@ function MeetingDetail(): React.ReactElement {
 		handleRetrySummary().catch(() => undefined);
 	}, [handleRetrySummary]);
 
-	const handleMeetingUpdated = useCallback((updated: PublicMeeting): void => {
-		setState({ status: "ready", meeting: updated });
-	}, []);
+	const handleMeetingUpdated = useCallback(
+		(updated: PublicMeeting): void => {
+			queryClient.setQueryData(["meeting", meetingId], updated);
+		},
+		[meetingId, queryClient]
+	);
 
 	const tabsBarRef = useRef<HTMLDivElement>(null);
 	const handleTabsValueChange = useCallback((_value: string): void => {
@@ -1089,29 +1068,38 @@ function MeetingDetail(): React.ReactElement {
 
 	const handleToggleActionItem = useCallback(
 		(id: string, completed: boolean): void => {
-			if (state.status !== "ready") {
+			if (togglingId !== null) {
 				return;
 			}
-			const previous = state.meeting.actionItems;
+			const current = queryClient.getQueryData<PublicMeeting>([
+				"meeting",
+				meetingId,
+			]);
+			const fallback = meetingQuery.data;
+			const base = current ?? fallback;
+			if (!base) {
+				return;
+			}
+			const previous = base.actionItems;
 			const next = previous.map((item) =>
 				item.id === id ? { ...item, completed } : item
 			);
-			setState({
-				status: "ready",
-				meeting: { ...state.meeting, actionItems: next },
+			queryClient.setQueryData(["meeting", meetingId], {
+				...base,
+				actionItems: next,
 			});
 			setTogglingId(id);
 			setActionError(null);
 			updateMeeting(meetingId, { actionItems: next })
 				.then((updated) => {
 					setTogglingId(null);
-					setState({ status: "ready", meeting: updated });
+					queryClient.setQueryData(["meeting", meetingId], updated);
 				})
 				.catch((error: unknown) => {
 					setTogglingId(null);
-					setState({
-						status: "ready",
-						meeting: { ...state.meeting, actionItems: previous },
+					queryClient.setQueryData(["meeting", meetingId], {
+						...base,
+						actionItems: previous,
 					});
 					setActionError(
 						error instanceof Error
@@ -1120,10 +1108,19 @@ function MeetingDetail(): React.ReactElement {
 					);
 				});
 		},
-		[meetingId, state]
+		[meetingId, meetingQuery.data, queryClient, togglingId]
 	);
 
-	if (state.status === "loading") {
+	const meeting = meetingQuery.data ?? null;
+	const isFirstLoad = meetingQuery.isPending && meeting === null;
+	const queryError = meetingQuery.isError ? meetingQuery.error : null;
+	const isNotFound = queryError !== null && isNotFoundError(queryError);
+	const loadErrorMessage =
+		queryError instanceof Error
+			? queryError.message
+			: "Could not load this meeting. Please try again.";
+
+	if (isFirstLoad) {
 		return (
 			<main className="container mx-auto w-full min-w-0 max-w-3xl overflow-x-clip px-4 py-6">
 				<div
@@ -1146,7 +1143,7 @@ function MeetingDetail(): React.ReactElement {
 		);
 	}
 
-	if (state.status === "not-found") {
+	if (isNotFound) {
 		return (
 			<main className="container mx-auto w-full min-w-0 max-w-3xl overflow-x-clip px-4 py-6">
 				<Empty>
@@ -1179,13 +1176,13 @@ function MeetingDetail(): React.ReactElement {
 		);
 	}
 
-	if (state.status === "error") {
+	if (queryError !== null) {
 		return (
 			<main className="container mx-auto w-full min-w-0 max-w-3xl overflow-x-clip px-4 py-6">
 				<Alert variant="error">
 					<CircleAlertIcon />
 					<AlertTitle>Could not load this meeting</AlertTitle>
-					<AlertDescription>{state.message}</AlertDescription>
+					<AlertDescription>{loadErrorMessage}</AlertDescription>
 					<AlertAction>
 						<div className="flex gap-2">
 							<Button
@@ -1207,7 +1204,33 @@ function MeetingDetail(): React.ReactElement {
 		);
 	}
 
-	const { meeting } = state;
+	if (meeting === null) {
+		return (
+			<main className="container mx-auto w-full min-w-0 max-w-3xl overflow-x-clip px-4 py-6">
+				<Alert variant="error">
+					<CircleAlertIcon />
+					<AlertTitle>Could not load this meeting</AlertTitle>
+					<AlertDescription>{loadErrorMessage}</AlertDescription>
+					<AlertAction>
+						<div className="flex gap-2">
+							<Button
+								onClick={handleRetry}
+								size="sm"
+								type="button"
+								variant="outline"
+							>
+								Retry
+							</Button>
+							<Button render={<Link to="/" />} size="sm" variant="link">
+								<ChevronLeftIcon aria-hidden="true" />
+								Back Home
+							</Button>
+						</div>
+					</AlertAction>
+				</Alert>
+			</main>
+		);
+	}
 
 	if (meeting.status === "failed") {
 		return (
