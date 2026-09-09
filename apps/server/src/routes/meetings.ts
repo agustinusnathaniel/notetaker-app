@@ -21,6 +21,7 @@ import {
 	normalizeDeepgramResponse,
 } from "../lib/deepgram";
 
+// Enforcement is binary bytes (26214400); user-facing copy labels it MB.
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const UUID_PATTERN =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1058,7 +1059,7 @@ function toHttpError(error: MeetingsError): HttpError {
 		case "AudioTooLarge":
 			return {
 				code: "audio_too_large",
-				message: "Audio files must be 25 MiB or smaller.",
+				message: "Audio files must be 25 MB or smaller.",
 				status: 413,
 			};
 		case "InvalidAudioBody":

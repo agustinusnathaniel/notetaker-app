@@ -105,7 +105,7 @@ pnpm run dev
 
 Open [http://localhost:3001](http://localhost:3001) for the web app. The API serves `/api/meetings` at [http://localhost:3000](http://localhost:3000).
 
-4. Upload a non-empty `audio/*` file up to 25 MiB from `/meetings/new`. The client creates a draft, uploads audio with `PUT /api/meetings/:id/audio`, then triggers `POST /api/meetings/:id/transcription` and `POST /api/meetings/:id/summary`. On success it redirects to the meeting detail page.
+4. Upload a non-empty `audio/*` file up to 25 MB from `/meetings/new`. The client creates a draft, uploads audio with `PUT /api/meetings/:id/audio`, then triggers `POST /api/meetings/:id/transcription` and `POST /api/meetings/:id/summary`. On success it redirects to the meeting detail page.
 5. If processing fails, the detail page shows the failed stage with `Retry transcription` (when audio is stored) or `Retry summary` (when a transcript exists), plus `Reload` and `Back Home`. Errors use the stable shape `{ "error": { "code": "...", "message": "..." } }` and never expose provider details or keys. Audio stays private in R2.
 
 ## Deployment
