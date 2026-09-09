@@ -1,0 +1,20 @@
+CREATE TABLE "meetings" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"title" text NOT NULL,
+	"description" text,
+	"source" text NOT NULL,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"failedStage" text,
+	"occurredAt" timestamp with time zone DEFAULT now() NOT NULL,
+	"durationSeconds" integer DEFAULT 0 NOT NULL,
+	"audioKey" text,
+	"audioMimeType" text,
+	"audioBytes" integer,
+	"transcript" text,
+	"transcriptSegments" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"summary" text,
+	"takeaways" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"actionItems" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
+	"updatedAt" timestamp with time zone DEFAULT now() NOT NULL
+);
