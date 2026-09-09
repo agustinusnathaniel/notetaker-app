@@ -842,34 +842,46 @@ function ActionItemsList({
 	}
 	return (
 		<ul className="flex min-w-0 list-none flex-col gap-2 p-0">
-			{items.map((item) => (
-				<li className="min-w-0" key={item.id}>
-					<label className="flex min-w-0 cursor-pointer items-start gap-2.5 text-sm">
-						<Checkbox
-							checked={item.completed}
-							className="mt-0.5"
-							disabled={disabled || togglingId === item.id}
-							onCheckedChange={(checked: boolean | "indeterminate"): void => {
-								onToggle(item.id, checked === true);
-							}}
-						/>
-						<span className="flex min-w-0 flex-col gap-0.5 break-words">
-							<span
-								className={
-									item.completed ? "text-muted-foreground line-through" : ""
-								}
-							>
-								{item.text}
+			{items.map((item) => {
+				const isPending = togglingId === item.id;
+				return (
+					<li className="min-w-0" key={item.id}>
+						<label className="flex min-w-0 cursor-pointer items-start gap-2.5 text-sm">
+							<span className="relative mt-0.5 inline-flex shrink-0">
+								<Checkbox
+									checked={item.completed}
+									disabled={disabled}
+									onCheckedChange={(
+										checked: boolean | "indeterminate"
+									): void => {
+										onToggle(item.id, checked === true);
+									}}
+								/>
+								{isPending ? (
+									<span
+										aria-hidden="true"
+										className="absolute -top-1 -right-1 size-2 animate-pulse rounded-full bg-amber-500"
+									/>
+								) : null}
 							</span>
-							{item.owner ? (
-								<span className="break-words text-foreground text-sm">
-									Owner: {item.owner}
+							<span className="flex min-w-0 flex-col gap-0.5 break-words">
+								<span
+									className={
+										item.completed ? "text-muted-foreground line-through" : ""
+									}
+								>
+									{item.text}
 								</span>
-							) : null}
-						</span>
-					</label>
-				</li>
-			))}
+								{item.owner ? (
+									<span className="break-words text-foreground text-sm">
+										Owner: {item.owner}
+									</span>
+								) : null}
+							</span>
+						</label>
+					</li>
+				);
+			})}
 		</ul>
 	);
 }
@@ -1511,11 +1523,7 @@ function MeetingDetail(): React.ReactElement {
 									<CardPanel className="min-w-0 p-4 sm:p-6">
 										<div className="flex min-w-0 flex-col gap-3">
 											{togglingId ? (
-												<p
-													aria-live="polite"
-													className="text-foreground text-sm"
-													role="status"
-												>
+												<p aria-live="polite" className="sr-only" role="status">
 													Saving change…
 												</p>
 											) : null}
