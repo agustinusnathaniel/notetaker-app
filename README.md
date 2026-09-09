@@ -129,6 +129,7 @@ cd packages/infra && pnpm exec alchemy deploy --stage production
 ### Production origins
 
 - Required after the first deploy: set `CORS_ORIGIN` in `apps/server/.env` to the exact deployed web origin, such as `https://app.example.com`, then deploy the server again.
+- To allow an additional exact origin (for example a custom domain alongside the workers.dev web URL), set `CORS_EXTRA_ORIGINS` to a comma-separated list of exact origins with no wildcards, such as `https://notetaker-app.sznm.dev`, then deploy the server again.
 
 ## Git Hooks and Formatting
 

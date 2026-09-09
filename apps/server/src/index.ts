@@ -6,6 +6,15 @@ import { logger } from "hono/logger";
 import health from "./routes/health";
 import meetings from "./routes/meetings";
 
+const extraOrigins =
+	typeof env.CORS_EXTRA_ORIGINS === "string" &&
+	env.CORS_EXTRA_ORIGINS.length > 0
+		? env.CORS_EXTRA_ORIGINS.split(",")
+				.map((origin) => origin.trim())
+				.filter((origin) => origin.length > 0)
+		: [];
+const allowedOrigins = [...new Set([env.CORS_ORIGIN, ...extraOrigins])];
+
 const app = new Hono();
 
 app.use(logger());
@@ -13,7 +22,7 @@ app.use(
 	"/*",
 	cors({
 		allowMethods: ["GET", "POST", "PUT", "OPTIONS"],
-		origin: env.CORS_ORIGIN,
+		origin: allowedOrigins,
 	})
 );
 
