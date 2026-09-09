@@ -86,7 +86,7 @@ import {
 	SearchXIcon,
 	Trash2Icon,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { MeetingMarkdown } from "@/components/markdown";
 import {
 	type ActionItem,
@@ -1075,6 +1075,18 @@ function MeetingDetail(): React.ReactElement {
 		setState({ status: "ready", meeting: updated });
 	}, []);
 
+	const tabsBarRef = useRef<HTMLDivElement>(null);
+	const handleTabsValueChange = useCallback((_value: string): void => {
+		const prefersReducedMotion =
+			typeof window !== "undefined" &&
+			typeof window.matchMedia === "function" &&
+			window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+		tabsBarRef.current?.scrollIntoView({
+			behavior: prefersReducedMotion ? "auto" : "smooth",
+			block: "start",
+		});
+	}, []);
+
 	const handleToggleActionItem = useCallback(
 		(id: string, completed: boolean): void => {
 			if (state.status !== "ready") {
@@ -1295,8 +1307,15 @@ function MeetingDetail(): React.ReactElement {
 
 				<Separator className="my-4" />
 
-				<Tabs className="min-w-0" defaultValue="transcript">
-					<div className="sticky top-0 z-10 -mx-4 min-w-0 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+				<Tabs
+					className="min-w-0 scroll-mt-2"
+					defaultValue="transcript"
+					onValueChange={handleTabsValueChange}
+				>
+					<div
+						className="sticky top-0 z-10 -mx-4 min-w-0 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+						ref={tabsBarRef}
+					>
 						<div className="min-w-0 scroll-px-4 overflow-x-auto py-0.5 [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]">
 							<TabsList
 								className="w-fit min-w-full"
