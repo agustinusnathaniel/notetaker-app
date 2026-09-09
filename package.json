@@ -23,6 +23,7 @@
     "db:migrate": "vp run --filter @notetaker-app/db db:migrate",
     "deploy": "vp run --filter @notetaker-app/infra deploy",
     "destroy": "vp run --filter @notetaker-app/infra destroy",
+    "infra:login": "pnpm --filter @notetaker-app/infra exec alchemy login --configure",
     "fix": "ultracite fix"
   },
   "dependencies": {
