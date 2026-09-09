@@ -4,6 +4,7 @@ import { retain } from "alchemy/RemovalPolicy";
 import { config } from "dotenv";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
+import { make as makeRedacted } from "effect/Redacted";
 
 config({ path: "./.env" });
 config({ path: "../../apps/web/.env" });
@@ -31,7 +32,10 @@ export const server = Cloudflare.Worker("server", {
 		CORS_ORIGIN: Config.string("CORS_ORIGIN"),
 		DATABASE_URL: Config.redacted("DATABASE_URL"),
 		DEEPGRAM_API_KEY: Config.redacted("DEEPGRAM_API_KEY"),
-		GROQ_API_KEY: Config.redacted("GROQ_API_KEY"),
+		GROQ_API_KEY: Config.withDefault(
+			Config.redacted("GROQ_API_KEY"),
+			makeRedacted("")
+		),
 	},
 	main: "../../apps/server/src/index.ts",
 });
