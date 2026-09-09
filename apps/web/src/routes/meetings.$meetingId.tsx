@@ -95,10 +95,12 @@ import {
 	fetchMeeting,
 	formatDate,
 	formatDuration,
+	formatSegmentTime,
 	isNotFoundError,
 	type PublicMeeting,
 	requestSummary,
 	requestTranscription,
+	type TranscriptSegment,
 	updateMeeting,
 } from "@/lib/meetings";
 
@@ -869,6 +871,113 @@ function ActionItemsList({
 	);
 }
 
+const SPEAKER_DOT_CLASSES: readonly string[] = [
+	"bg-sky-500",
+	"bg-emerald-500",
+	"bg-amber-500",
+	"bg-violet-500",
+	"bg-rose-500",
+	"bg-cyan-500",
+	"bg-lime-500",
+	"bg-orange-500",
+] as const;
+
+function speakerLabel(speaker: number | null): string {
+	return speaker === null
+		? "Unknown speaker"
+		: `Speaker ${String(speaker + 1)}`;
+}
+
+function speakerDotClassName(speaker: number | null): string {
+	if (speaker === null) {
+		return "bg-zinc-400";
+	}
+	return (
+		SPEAKER_DOT_CLASSES[
+			((speaker % SPEAKER_DOT_CLASSES.length) + SPEAKER_DOT_CLASSES.length) %
+				SPEAKER_DOT_CLASSES.length
+		] ?? "bg-zinc-400"
+	);
+}
+
+interface SpeakerGroup {
+	readonly end: number;
+	readonly speaker: number | null;
+	readonly start: number;
+	readonly text: string;
+}
+
+function groupConsecutiveSegments(
+	segments: readonly TranscriptSegment[]
+): SpeakerGroup[] {
+	const groups: SpeakerGroup[] = [];
+	for (const segment of segments) {
+		const current = groups.at(-1);
+		if (current && current.speaker === segment.speaker) {
+			const lastIndex = groups.length - 1;
+			groups[lastIndex] = {
+				end: Math.max(current.end, segment.end),
+				speaker: current.speaker,
+				start: current.start,
+				text: `${current.text} ${segment.text}`.trim(),
+			};
+		} else {
+			groups.push({
+				end: segment.end,
+				speaker: segment.speaker,
+				start: segment.start,
+				text: segment.text,
+			});
+		}
+	}
+	return groups;
+}
+
+function hasSpeakerSegments(segments: readonly TranscriptSegment[]): boolean {
+	if (segments.length > 1) {
+		return true;
+	}
+	return segments.some((segment) => segment.speaker !== null);
+}
+
+function TranscriptSegmentsList({
+	segments,
+}: {
+	readonly segments: readonly TranscriptSegment[];
+}): React.ReactElement {
+	const groups = groupConsecutiveSegments(segments);
+	return (
+		<ol
+			aria-label="Speaker transcript"
+			className="flex min-w-0 list-none flex-col gap-4 p-0"
+		>
+			{groups.map((group, index) => (
+				<li
+					aria-label={`${speakerLabel(group.speaker)}, ${formatSegmentTime(group.start)} to ${formatSegmentTime(group.end)}`}
+					className="flex min-w-0 flex-col gap-1.5"
+					key={`${String(group.speaker ?? "unknown")}-${String(group.start)}-${String(index)}`}
+				>
+					<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+						<Badge variant="outline">
+							<span
+								aria-hidden="true"
+								className={`size-1.5 rounded-full ${speakerDotClassName(group.speaker)}`}
+							/>
+							{speakerLabel(group.speaker)}
+						</Badge>
+						<span className="min-w-0 break-words text-muted-foreground text-xs tabular-nums">
+							{formatSegmentTime(group.start)} - {formatSegmentTime(group.end)}
+						</span>
+					</div>
+					<p className="min-w-0 break-words text-foreground text-sm leading-relaxed">
+						{group.text}
+					</p>
+				</li>
+			))}
+		</ol>
+	);
+}
+
 function MeetingDetail(): React.ReactElement {
 	const { meetingId } = Route.useParams();
 	const [state, setState] = useState<DetailState>({ status: "loading" });
@@ -1226,9 +1335,16 @@ function MeetingDetail(): React.ReactElement {
 									</CardTitle>
 								</CardHeader>
 								<CardPanel className="min-w-0 p-4 pt-0 sm:px-6">
-									<p className="min-w-0 whitespace-pre-wrap break-words text-foreground text-sm leading-relaxed">
-										{meeting.transcript ?? "No transcript is available yet."}
-									</p>
+									{hasSpeakerSegments(meeting.transcriptSegments) &&
+									meeting.transcriptSegments.length > 0 ? (
+										<TranscriptSegmentsList
+											segments={meeting.transcriptSegments}
+										/>
+									) : (
+										<p className="min-w-0 whitespace-pre-wrap break-words text-foreground text-sm leading-relaxed">
+											{meeting.transcript ?? "No transcript is available yet."}
+										</p>
+									)}
 								</CardPanel>
 								<CardFooter className="border-t px-4 py-3 sm:px-6">
 									<div className="flex gap-1 text-muted-foreground text-xs">
