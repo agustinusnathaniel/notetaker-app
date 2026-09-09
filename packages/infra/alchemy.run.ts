@@ -29,6 +29,10 @@ export const server = Cloudflare.Worker("server", {
 	env: {
 		AI: Cloudflare.Workers.AI(),
 		AUDIO_BUCKET: audioBucket,
+		CORS_EXTRA_ORIGINS: Config.withDefault(
+			Config.string("CORS_EXTRA_ORIGINS"),
+			""
+		),
 		CORS_ORIGIN: Config.string("CORS_ORIGIN"),
 		DATABASE_URL: Config.redacted("DATABASE_URL"),
 		DEEPGRAM_API_KEY: Config.redacted("DEEPGRAM_API_KEY"),
