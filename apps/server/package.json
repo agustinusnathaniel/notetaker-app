@@ -11,6 +11,7 @@
     "@notetaker-app/db": "workspace:*",
     "@notetaker-app/env": "workspace:*",
     "dotenv": "catalog:",
+    "drizzle-orm": "^0.45.2",
     "effect": "4.0.0-rc.112",
     "hono": "^4.12.32",
     "zod": "catalog:"

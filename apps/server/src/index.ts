@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 
 import health from "./routes/health";
+import meetings from "./routes/meetings";
 import transcribe from "./routes/transcribe";
 
 const app = new Hono();
@@ -12,7 +13,7 @@ app.use(logger());
 app.use(
 	"/*",
 	cors({
-		allowMethods: ["GET", "POST", "OPTIONS"],
+		allowMethods: ["GET", "POST", "PUT", "OPTIONS"],
 		origin: env.CORS_ORIGIN,
 	})
 );
@@ -30,6 +31,7 @@ app.onError((_error, c) =>
 );
 
 app.route("/", health);
+app.route("/", meetings);
 app.route("/", transcribe);
 
 export default app;
