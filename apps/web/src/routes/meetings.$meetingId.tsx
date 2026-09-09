@@ -19,13 +19,16 @@ import { Badge } from "@notetaker-app/ui/components/badge";
 import { Button } from "@notetaker-app/ui/components/button";
 import {
 	Card,
+	CardFooter,
 	CardFrame,
 	CardFrameAction,
 	CardFrameDescription,
 	CardFrameFooter,
 	CardFrameHeader,
 	CardFrameTitle,
+	CardHeader,
 	CardPanel,
+	CardTitle,
 } from "@notetaker-app/ui/components/card";
 import { Checkbox } from "@notetaker-app/ui/components/checkbox";
 import {
@@ -140,7 +143,7 @@ function MeetingStatusBadge({
 		variant = "error";
 	}
 	return (
-		<Badge variant={variant}>
+		<Badge className="self-start sm:self-center" variant={variant}>
 			<span
 				aria-hidden="true"
 				className={`size-1.5 rounded-full ${dotClassName}`}
@@ -233,16 +236,20 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 				className="flex min-w-0 flex-col gap-4"
 			>
 				<CardFrame className="min-w-0 overflow-x-clip">
-					<CardFrameHeader className="px-4 max-sm:grid-cols-1 max-sm:gap-2 sm:px-6">
+					<CardFrameHeader className="px-4 max-sm:grid-cols-1! max-sm:gap-2 sm:px-6">
 						{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h1 with the meeting title as content. */}
-						<CardFrameTitle id="meeting-title" render={<h1 />}>
+						<CardFrameTitle
+							className="self-start break-words font-heading text-xl sm:text-2xl"
+							id="meeting-title"
+							render={<h1 />}
+						>
 							{meeting.title}
 						</CardFrameTitle>
-						<CardFrameDescription className="break-words">
+						<CardFrameDescription className="self-start break-words">
 							{formatDate(meeting.occurredAt)} ·{" "}
 							{formatDuration(meeting.durationSeconds)}
 						</CardFrameDescription>
-						<CardFrameAction>
+						<CardFrameAction className="max-sm:w-full">
 							<MeetingStatusBadge
 								label={`Failed during ${stageLabel}`}
 								status="failed"
@@ -429,7 +436,7 @@ function EditMeetingDialog({
 		<Dialog onOpenChange={handleOpenChange} open={open}>
 			<DialogTrigger
 				render={
-					<Button size="sm" variant="outline">
+					<Button className="max-sm:w-full" size="sm" variant="outline">
 						<PencilIcon aria-hidden="true" />
 						Edit
 					</Button>
@@ -489,7 +496,7 @@ function EditMeetingDialog({
 							</Field>
 							{formError ? (
 								<p
-									className="text-destructive-foreground text-xs"
+									className="text-destructive-foreground text-sm"
 									id="meeting-edit-form-error"
 									role="alert"
 								>
@@ -553,7 +560,11 @@ function DeleteMeetingDialog({
 		<AlertDialog>
 			<AlertDialogTrigger
 				render={
-					<Button size="sm" variant="destructive-outline">
+					<Button
+						className="max-sm:w-full"
+						size="sm"
+						variant="destructive-outline"
+					>
 						<Trash2Icon aria-hidden="true" />
 						Delete
 					</Button>
@@ -612,9 +623,7 @@ function ActionItemsList({
 }): React.ReactElement {
 	if (items.length === 0) {
 		return (
-			<p className="text-muted-foreground text-sm">
-				No action items were recorded.
-			</p>
+			<p className="text-foreground text-sm">No action items were recorded.</p>
 		);
 	}
 	return (
@@ -639,7 +648,7 @@ function ActionItemsList({
 								{item.text}
 							</span>
 							{item.owner ? (
-								<span className="break-words text-muted-foreground text-xs">
+								<span className="break-words text-foreground text-sm">
 									Owner: {item.owner}
 								</span>
 							) : null}
@@ -892,16 +901,20 @@ function MeetingDetail(): React.ReactElement {
 					className="flex min-w-0 flex-col gap-4"
 				>
 					<CardFrame className="min-w-0 overflow-x-clip">
-						<CardFrameHeader className="px-4 max-sm:grid-cols-1 max-sm:gap-2 sm:px-6">
+						<CardFrameHeader className="px-4 max-sm:grid-cols-1! max-sm:gap-2 sm:px-6">
 							{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h1 with the meeting title as content. */}
-							<CardFrameTitle id="meeting-title" render={<h1 />}>
+							<CardFrameTitle
+								className="self-start break-words font-heading text-xl sm:text-2xl"
+								id="meeting-title"
+								render={<h1 />}
+							>
 								{meeting.title}
 							</CardFrameTitle>
-							<CardFrameDescription className="break-words">
+							<CardFrameDescription className="self-start break-words">
 								{formatDate(meeting.occurredAt)} ·{" "}
 								{formatDuration(meeting.durationSeconds)}
 							</CardFrameDescription>
-							<CardFrameAction>
+							<CardFrameAction className="max-sm:w-full">
 								<MeetingStatusBadge status={meeting.status} />
 							</CardFrameAction>
 						</CardFrameHeader>
@@ -950,17 +963,23 @@ function MeetingDetail(): React.ReactElement {
 				className="flex min-w-0 flex-col gap-4"
 			>
 				<CardFrame className="min-w-0 overflow-x-clip">
-					<CardFrameHeader className="px-4 max-sm:grid-cols-1 max-sm:gap-2 sm:px-6">
+					<CardFrameHeader className="px-4 sm:px-6">
 						{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h1 with the meeting title as content. */}
-						<CardFrameTitle id="meeting-title" render={<h1 />}>
+						<CardFrameTitle
+							className="self-start break-words font-heading text-xl sm:text-2xl"
+							id="meeting-title"
+							render={<h1 />}
+						>
 							{meeting.title}
 						</CardFrameTitle>
-						<CardFrameDescription className="break-words">
+						<CardFrameDescription className="self-start break-words">
 							{formatDate(meeting.occurredAt)} ·{" "}
 							{formatDuration(meeting.durationSeconds)}
 						</CardFrameDescription>
-						<CardFrameAction>
-							<div className="flex min-w-0 flex-wrap items-center gap-2">
+					</CardFrameHeader>
+					<CardFrameFooter className="border-t px-4 py-3 sm:px-6">
+						<div className="flex min-w-0 flex-col gap-3">
+							<div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
 								<MeetingStatusBadge status={meeting.status} />
 								<EditMeetingDialog
 									meeting={meeting}
@@ -968,12 +987,10 @@ function MeetingDetail(): React.ReactElement {
 								/>
 								<DeleteMeetingDialog meetingId={meeting.id} />
 							</div>
-						</CardFrameAction>
-					</CardFrameHeader>
-					<CardFrameFooter className="border-t px-4 py-3 sm:px-6">
-						<p className="text-muted-foreground text-xs">
-							Audio, transcript, and notes are kept together on this page.
-						</p>
+							<p className="text-muted-foreground text-xs">
+								Audio, transcript, and notes are kept together on this page.
+							</p>
+						</div>
 					</CardFrameFooter>
 				</CardFrame>
 
@@ -1012,35 +1029,29 @@ function MeetingDetail(): React.ReactElement {
 				<Separator className="my-4" />
 
 				<Tabs className="min-w-0" defaultValue="transcript">
-					<div className="-mx-1 min-w-0 overflow-x-auto border-b px-1">
-						<TabsList className="w-max max-w-full" variant="underline">
+					<div className="-mx-4 min-w-0 scroll-px-4 overflow-x-auto border-b px-4 py-0.5 [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]">
+						<TabsList
+							className="w-fit min-w-full"
+							size="sm"
+							variant="underline"
+						>
 							<TabsTab value="transcript">
-								<FileTextIcon aria-hidden="true" />
+								<FileTextIcon aria-hidden="true" className="max-sm:hidden" />
 								Transcript
 							</TabsTab>
 							<TabsTab value="summary">
-								<ScrollTextIcon aria-hidden="true" />
+								<ScrollTextIcon aria-hidden="true" className="max-sm:hidden" />
 								Summary
 							</TabsTab>
 							<TabsTab value="takeaways">
-								<ListChecksIcon aria-hidden="true" />
+								<ListChecksIcon aria-hidden="true" className="max-sm:hidden" />
 								Takeaways
-								<Badge
-									className="not-in-data-active:text-muted-foreground"
-									variant="outline"
-								>
-									{meeting.takeaways.length}
-								</Badge>
+								<Badge variant="outline">{meeting.takeaways.length}</Badge>
 							</TabsTab>
 							<TabsTab value="actions">
-								<ListTodoIcon aria-hidden="true" />
+								<ListTodoIcon aria-hidden="true" className="max-sm:hidden" />
 								Actions
-								<Badge
-									className="not-in-data-active:text-muted-foreground"
-									variant="outline"
-								>
-									{meeting.actionItems.length}
-								</Badge>
+								<Badge variant="outline">{meeting.actionItems.length}</Badge>
 							</TabsTab>
 						</TabsList>
 					</div>
@@ -1049,24 +1060,19 @@ function MeetingDetail(): React.ReactElement {
 							aria-labelledby="meeting-transcript-heading"
 							className="min-w-0 pt-2"
 						>
-							<CardFrame className="min-w-0 overflow-x-clip">
-								<CardFrameHeader className="px-4 sm:px-6">
-									<CardFrameTitle
-										id="meeting-transcript-heading"
-										// biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h2 with the transcript title as content.
-										render={<h2 />}
-									>
+							<Card className="min-w-0 overflow-x-clip">
+								<CardHeader className="px-4 sm:px-6">
+									{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h2 with the transcript title as content. */}
+									<CardTitle id="meeting-transcript-heading" render={<h2 />}>
 										Transcript
-									</CardFrameTitle>
-								</CardFrameHeader>
-								<Card>
-									<CardPanel className="min-w-0 p-4 sm:p-6">
-										<p className="min-w-0 whitespace-pre-wrap break-words text-sm leading-relaxed">
-											{meeting.transcript ?? "No transcript is available yet."}
-										</p>
-									</CardPanel>
-								</Card>
-								<CardFrameFooter className="border-t px-4 py-3 sm:px-6">
+									</CardTitle>
+								</CardHeader>
+								<CardPanel className="min-w-0 p-4 pt-0 sm:px-6">
+									<p className="min-w-0 whitespace-pre-wrap break-words text-foreground text-sm leading-relaxed">
+										{meeting.transcript ?? "No transcript is available yet."}
+									</p>
+								</CardPanel>
+								<CardFooter className="border-t px-4 py-3 sm:px-6">
 									<div className="flex gap-1 text-muted-foreground text-xs">
 										<CircleAlertIcon
 											aria-hidden="true"
@@ -1077,8 +1083,8 @@ function MeetingDetail(): React.ReactElement {
 											transcript.
 										</p>
 									</div>
-								</CardFrameFooter>
-							</CardFrame>
+								</CardFooter>
+							</Card>
 						</section>
 					</TabsPanel>
 					<TabsPanel className="min-w-0" value="summary">
@@ -1086,23 +1092,23 @@ function MeetingDetail(): React.ReactElement {
 							aria-labelledby="meeting-summary-heading"
 							className="min-w-0 pt-2"
 						>
-							<CardFrame className="min-w-0 overflow-x-clip">
-								<CardFrameHeader className="px-4 sm:px-6">
-									{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h2 with the summary title as content. */}
-									<CardFrameTitle id="meeting-summary-heading" render={<h2 />}>
+							<Card className="min-w-0 overflow-x-clip">
+								<CardHeader className="px-4 sm:px-6">
+									{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h2 with the summary title as content. */}
+									<CardTitle id="meeting-summary-heading" render={<h2 />}>
 										Summary
-									</CardFrameTitle>
-								</CardFrameHeader>
-								<Card>
-									<CardPanel className="min-w-0 break-words p-4 sm:p-6">
-										{meeting.summary ? (
-											<MeetingMarkdown text={meeting.summary} />
-										) : (
-											<p className="text-sm">No summary is available yet.</p>
-										)}
-									</CardPanel>
-								</Card>
-								<CardFrameFooter className="border-t px-4 py-3 sm:px-6">
+									</CardTitle>
+								</CardHeader>
+								<CardPanel className="min-w-0 break-words p-4 pt-0 sm:px-6">
+									{meeting.summary ? (
+										<MeetingMarkdown text={meeting.summary} />
+									) : (
+										<p className="text-foreground text-sm">
+											No summary is available yet.
+										</p>
+									)}
+								</CardPanel>
+								<CardFooter className="border-t px-4 py-3 sm:px-6">
 									<div className="flex gap-1 text-muted-foreground text-xs">
 										<CircleAlertIcon
 											aria-hidden="true"
@@ -1113,8 +1119,8 @@ function MeetingDetail(): React.ReactElement {
 											the audio.
 										</p>
 									</div>
-								</CardFrameFooter>
-							</CardFrame>
+								</CardFooter>
+							</Card>
 						</section>
 					</TabsPanel>
 					<TabsPanel className="min-w-0" value="takeaways">
@@ -1149,7 +1155,7 @@ function MeetingDetail(): React.ReactElement {
 												))}
 											</ul>
 										) : (
-											<p className="text-muted-foreground text-sm">
+											<p className="text-foreground text-sm">
 												No takeaways were recorded.
 											</p>
 										)}
@@ -1190,7 +1196,7 @@ function MeetingDetail(): React.ReactElement {
 											{togglingId ? (
 												<p
 													aria-live="polite"
-													className="text-muted-foreground text-xs"
+													className="text-foreground text-sm"
 													role="status"
 												>
 													Saving change…

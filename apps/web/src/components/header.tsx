@@ -9,7 +9,7 @@ const NAV_LINK_CLASS =
 export default function Header() {
 	return (
 		<div>
-			<div className="flex flex-row items-center justify-between px-2 py-1">
+			<div className="flex h-16 flex-row items-center justify-between px-4">
 				<nav className="flex items-center gap-4">
 					<Link
 						activeOptions={{ exact: true }}
