@@ -6,11 +6,12 @@ import {
 import { Button } from "@notetaker-app/ui/components/button";
 import {
 	Card,
-	CardDescription,
-	CardFooter,
-	CardHeader,
+	CardFrame,
+	CardFrameDescription,
+	CardFrameFooter,
+	CardFrameHeader,
+	CardFrameTitle,
 	CardPanel,
-	CardTitle,
 } from "@notetaker-app/ui/components/card";
 import {
 	Field,
@@ -310,86 +311,90 @@ function NewMeeting(): React.ReactElement {
 					</Button>
 				</div>
 
-				<Card>
-					<CardHeader>
-						{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h2 with the upload title as content. */}
-						<CardTitle render={<h2 />}>Upload audio</CardTitle>
-						<CardDescription>
+				<CardFrame>
+					<CardFrameHeader>
+						{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h2 with the upload title as content. */}
+						<CardFrameTitle render={<h2 />}>Upload audio</CardFrameTitle>
+						<CardFrameDescription>
 							Upload an audio file up to 25 MiB. Notes generate automatically,
 							then you return to the meeting detail page. If you leave, retry
 							from the meeting detail page.
-						</CardDescription>
-					</CardHeader>
-					<CardPanel>
-						<form
-							className="flex flex-col gap-4"
-							id="audio-upload-form"
-							onSubmit={handleSubmit}
-						>
-							<Field invalid={!!fieldError}>
-								<div className="flex items-center gap-1.5">
-									<FieldLabel htmlFor="audio-file">Audio file</FieldLabel>
-									<Tooltip>
-										<TooltipTrigger
-											aria-label="Audio file size limit"
-											className="inline-flex items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-											render={<button type="button" />}
-										>
-											<InfoIcon aria-hidden="true" className="size-3.5" />
-										</TooltipTrigger>
-										<TooltipContent>25 MiB max</TooltipContent>
-									</Tooltip>
-								</div>
-								<Input
-									accept={ACCEPT_VALUE}
-									aria-describedby={describedBy}
-									aria-invalid={fieldError ? true : undefined}
-									disabled={isSubmitting}
-									id="audio-file"
-									onChange={handleFileChange}
-									type="file"
-								/>
-								{fieldError ? (
-									<FieldError id="audio-file-error" match={true}>
-										{fieldError}
-									</FieldError>
-								) : null}
-								<FieldDescription>
-									Upload an MP3, WAV, M4A, OGG, OPUS, FLAC, AAC, or WebM file up
-									to 25 MiB.
-								</FieldDescription>
-								{fileName ? (
-									<FieldDescription>
-										Selected: {fileName}
-										{durationSeconds > 0
-											? ` · about ${String(durationSeconds)}s`
-											: null}
-									</FieldDescription>
-								) : null}
-							</Field>
-
-							{progressValue === undefined ? null : (
-								<Progress value={progressValue}>
-									<div className="flex items-center justify-between gap-2">
-										<ProgressLabel>Status: {STAGE_LABELS[stage]}</ProgressLabel>
-										<ProgressValue />
+						</CardFrameDescription>
+					</CardFrameHeader>
+					<Card>
+						<CardPanel>
+							<form
+								className="flex flex-col gap-4"
+								id="audio-upload-form"
+								onSubmit={handleSubmit}
+							>
+								<Field invalid={!!fieldError}>
+									<div className="flex items-center gap-1.5">
+										<FieldLabel htmlFor="audio-file">Audio file</FieldLabel>
+										<Tooltip>
+											<TooltipTrigger
+												aria-label="Audio file size limit"
+												className="inline-flex items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+												render={<button type="button" />}
+											>
+												<InfoIcon aria-hidden="true" className="size-3.5" />
+											</TooltipTrigger>
+											<TooltipContent>25 MiB max</TooltipContent>
+										</Tooltip>
 									</div>
-									<ProgressTrack>
-										<ProgressIndicator />
-									</ProgressTrack>
-								</Progress>
-							)}
+									<Input
+										accept={ACCEPT_VALUE}
+										aria-describedby={describedBy}
+										aria-invalid={fieldError ? true : undefined}
+										disabled={isSubmitting}
+										id="audio-file"
+										onChange={handleFileChange}
+										type="file"
+									/>
+									{fieldError ? (
+										<FieldError id="audio-file-error" match={true}>
+											{fieldError}
+										</FieldError>
+									) : null}
+									<FieldDescription>
+										Upload an MP3, WAV, M4A, OGG, OPUS, FLAC, AAC, or WebM file
+										up to 25 MiB.
+									</FieldDescription>
+									{fileName ? (
+										<FieldDescription>
+											Selected: {fileName}
+											{durationSeconds > 0
+												? ` · about ${String(durationSeconds)}s`
+												: null}
+										</FieldDescription>
+									) : null}
+								</Field>
 
-							{failure ? (
-								<Alert variant="error">
-									<CircleAlertIcon />
-									<AlertTitle>Upload failed</AlertTitle>
-									<AlertDescription>{failure}</AlertDescription>
-								</Alert>
-							) : null}
-						</form>
-					</CardPanel>
-					<CardFooter className="border-t py-3">
+								{progressValue === undefined ? null : (
+									<Progress value={progressValue}>
+										<div className="flex items-center justify-between gap-2">
+											<ProgressLabel>
+												Status: {STAGE_LABELS[stage]}
+											</ProgressLabel>
+											<ProgressValue />
+										</div>
+										<ProgressTrack>
+											<ProgressIndicator />
+										</ProgressTrack>
+									</Progress>
+								)}
+
+								{failure ? (
+									<Alert variant="error">
+										<CircleAlertIcon />
+										<AlertTitle>Upload failed</AlertTitle>
+										<AlertDescription>{failure}</AlertDescription>
+									</Alert>
+								) : null}
+							</form>
+						</CardPanel>
+					</Card>
+					<CardFrameFooter className="border-t py-3">
 						<div className="inline-flex items-center gap-2">
 							<Button render={<Link to="/" />} variant="ghost">
 								Cancel
@@ -405,8 +410,8 @@ function NewMeeting(): React.ReactElement {
 									: "Upload and generate notes"}
 							</Button>
 						</div>
-					</CardFooter>
-				</Card>
+					</CardFrameFooter>
+				</CardFrame>
 			</section>
 		</main>
 	);

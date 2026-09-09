@@ -9,9 +9,10 @@ import { Button } from "@notetaker-app/ui/components/button";
 import {
 	Card,
 	CardDescription,
-	CardFooter,
+	CardFrame,
 	CardFrameAction,
 	CardFrameDescription,
+	CardFrameFooter,
 	CardFrameHeader,
 	CardFrameTitle,
 	CardHeader,
@@ -123,23 +124,34 @@ function MeetingsLibrary(): React.ReactElement {
 	return (
 		<main className="container mx-auto w-full max-w-3xl px-4 py-6">
 			<section aria-labelledby="meetings-title" className="flex flex-col gap-4">
-				<CardFrameHeader>
-					{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h1 with the library title as content. */}
-					<CardFrameTitle id="meetings-title" render={<h1 />}>
-						Meetings
-					</CardFrameTitle>
-					<CardFrameDescription>
-						Review recordings, transcripts, and notes.
-					</CardFrameDescription>
+				<CardFrame>
+					<CardFrameHeader>
+						{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h1 with the library title as content. */}
+						<CardFrameTitle id="meetings-title" render={<h1 />}>
+							Meetings
+						</CardFrameTitle>
+						<CardFrameDescription>
+							Review recordings, transcripts, and notes.
+						</CardFrameDescription>
+						{state.status === "ready" && state.meetings.length > 0 ? (
+							<CardFrameAction>
+								<Button render={<Link to="/meetings/new" />} size="sm">
+									<PlusIcon aria-hidden="true" />
+									New meeting
+								</Button>
+							</CardFrameAction>
+						) : null}
+					</CardFrameHeader>
 					{state.status === "ready" && state.meetings.length > 0 ? (
-						<CardFrameAction>
-							<Button render={<Link to="/meetings/new" />} size="sm">
-								<PlusIcon aria-hidden="true" />
-								New meeting
-							</Button>
-						</CardFrameAction>
+						<CardFrameFooter className="border-t py-3">
+							<p className="text-muted-foreground text-xs">
+								{state.meetings.length}{" "}
+								{state.meetings.length === 1 ? "meeting" : "meetings"} · Sorted
+								newest first.
+							</p>
+						</CardFrameFooter>
 					) : null}
-				</CardFrameHeader>
+				</CardFrame>
 
 				{state.status === "loading" ? (
 					<div
@@ -147,20 +159,24 @@ function MeetingsLibrary(): React.ReactElement {
 						className="flex flex-col gap-3"
 						role="status"
 					>
-						<Card>
-							<CardPanel className="flex flex-col gap-3">
-								<Skeleton className="h-5 w-1/3 rounded-md" />
-								<Skeleton className="h-16 w-full rounded-xl" />
-								<Skeleton className="h-4 w-2/3 rounded-md" />
-							</CardPanel>
-						</Card>
-						<Card>
-							<CardPanel className="flex flex-col gap-3">
-								<Skeleton className="h-5 w-1/4 rounded-md" />
-								<Skeleton className="h-16 w-full rounded-xl" />
-								<Skeleton className="h-4 w-1/2 rounded-md" />
-							</CardPanel>
-						</Card>
+						<CardFrame>
+							<Card>
+								<CardPanel className="flex flex-col gap-3">
+									<Skeleton className="h-5 w-1/3 rounded-md" />
+									<Skeleton className="h-16 w-full rounded-xl" />
+									<Skeleton className="h-4 w-2/3 rounded-md" />
+								</CardPanel>
+							</Card>
+						</CardFrame>
+						<CardFrame>
+							<Card>
+								<CardPanel className="flex flex-col gap-3">
+									<Skeleton className="h-5 w-1/4 rounded-md" />
+									<Skeleton className="h-16 w-full rounded-xl" />
+									<Skeleton className="h-4 w-1/2 rounded-md" />
+								</CardPanel>
+							</Card>
+						</CardFrame>
 					</div>
 				) : null}
 
@@ -211,15 +227,19 @@ function MeetingsLibrary(): React.ReactElement {
 									params={{ meetingId: meeting.id }}
 									to="/meetings/$meetingId"
 								>
-									<Card>
-										<CardHeader>
-											{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h2 with the meeting title as content. */}
-											<CardTitle render={<h2 />}>{meeting.title}</CardTitle>
-											{meeting.description ? (
-												<CardDescription>{meeting.description}</CardDescription>
-											) : null}
-										</CardHeader>
-										<CardFooter className="border-t py-3">
+									<CardFrame>
+										<Card>
+											<CardHeader>
+												{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h2 with the meeting title as content. */}
+												<CardTitle render={<h2 />}>{meeting.title}</CardTitle>
+												{meeting.description ? (
+													<CardDescription>
+														{meeting.description}
+													</CardDescription>
+												) : null}
+											</CardHeader>
+										</Card>
+										<CardFrameFooter className="border-t py-3">
 											<div className="flex w-full items-center justify-between gap-2">
 												<div className="flex flex-wrap items-center gap-2 text-muted-foreground text-sm">
 													<span>
@@ -233,8 +253,8 @@ function MeetingsLibrary(): React.ReactElement {
 													className="size-4 shrink-0 text-muted-foreground"
 												/>
 											</div>
-										</CardFooter>
-									</Card>
+										</CardFrameFooter>
+									</CardFrame>
 								</Link>
 							</li>
 						))}

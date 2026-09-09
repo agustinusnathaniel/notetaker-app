@@ -9,12 +9,13 @@ import { Badge } from "@notetaker-app/ui/components/badge";
 import { Button } from "@notetaker-app/ui/components/button";
 import {
 	Card,
-	CardAction,
-	CardDescription,
-	CardFooter,
-	CardHeader,
+	CardFrame,
+	CardFrameAction,
+	CardFrameDescription,
+	CardFrameFooter,
+	CardFrameHeader,
+	CardFrameTitle,
 	CardPanel,
-	CardTitle,
 } from "@notetaker-app/ui/components/card";
 import {
 	Empty,
@@ -192,50 +193,52 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 	return (
 		<main className="container mx-auto w-full max-w-3xl px-4 py-6">
 			<section aria-labelledby="meeting-title" className="flex flex-col gap-4">
-				<Card>
-					<CardHeader>
-						{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h1 with the meeting title as content. */}
-						<CardTitle id="meeting-title" render={<h1 />}>
+				<CardFrame>
+					<CardFrameHeader>
+						{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h1 with the meeting title as content. */}
+						<CardFrameTitle id="meeting-title" render={<h1 />}>
 							{meeting.title}
-						</CardTitle>
-						<CardDescription>
+						</CardFrameTitle>
+						<CardFrameDescription>
 							{formatDate(meeting.occurredAt)} ·{" "}
 							{formatDuration(meeting.durationSeconds)}
-						</CardDescription>
-						<CardAction>
+						</CardFrameDescription>
+						<CardFrameAction>
 							<MeetingStatusBadge
 								label={`Failed during ${stageLabel}`}
 								status="failed"
 							/>
-						</CardAction>
-					</CardHeader>
-					<CardPanel>
-						<div className="flex flex-col gap-3">
-							<p className="text-sm">
-								Processing failed during {stageLabel}.{" "}
-								{canRetryTranscription || canRetrySummary
-									? "You can retry this step below."
-									: "Upload a new file from the new-meeting flow to try again."}
-							</p>
-							{isRetrying ? (
-								<p aria-live="polite" className="text-sm" role="status">
-									{retryStage === "transcribing"
-										? "Retrying transcription…"
-										: "Retrying summary…"}
+						</CardFrameAction>
+					</CardFrameHeader>
+					<Card>
+						<CardPanel>
+							<div className="flex flex-col gap-3">
+								<p className="text-sm">
+									Processing failed during {stageLabel}.{" "}
+									{canRetryTranscription || canRetrySummary
+										? "You can retry this step below."
+										: "Upload a new file from the new-meeting flow to try again."}
 								</p>
-							) : null}
-							{retryError ? (
-								<Alert id="meeting-retry-error" variant="error">
-									<CircleAlertIcon />
-									<AlertTitle>Retry failed</AlertTitle>
-									<AlertDescription>{retryError}</AlertDescription>
-									<AlertAction>{alertRetryButton}</AlertAction>
-								</Alert>
-							) : null}
-						</div>
-					</CardPanel>
-					<CardFooter className="border-t py-3">
-						<div className="flex flex-wrap gap-2">
+								{isRetrying ? (
+									<p aria-live="polite" className="text-sm" role="status">
+										{retryStage === "transcribing"
+											? "Retrying transcription…"
+											: "Retrying summary…"}
+									</p>
+								) : null}
+								{retryError ? (
+									<Alert id="meeting-retry-error" variant="error">
+										<CircleAlertIcon />
+										<AlertTitle>Retry failed</AlertTitle>
+										<AlertDescription>{retryError}</AlertDescription>
+										<AlertAction>{alertRetryButton}</AlertAction>
+									</Alert>
+								) : null}
+							</div>
+						</CardPanel>
+					</Card>
+					<CardFrameFooter className="border-t py-3">
+						<div className="flex flex-wrap items-center gap-2">
 							{canRetryTranscription ? (
 								<Button
 									aria-describedby={describedBy}
@@ -263,15 +266,13 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 							>
 								Reload
 							</Button>
+							<Button render={<Link to="/" />} variant="link">
+								<ChevronLeftIcon aria-hidden="true" />
+								Back Home
+							</Button>
 						</div>
-					</CardFooter>
-				</Card>
-				<div>
-					<Button render={<Link to="/" />} variant="link">
-						<ChevronLeftIcon aria-hidden="true" />
-						Back Home
-					</Button>
-				</div>
+					</CardFrameFooter>
+				</CardFrame>
 			</section>
 		</main>
 	);
@@ -376,14 +377,16 @@ function MeetingDetail(): React.ReactElement {
 					className="flex flex-col gap-3"
 					role="status"
 				>
-					<Card>
-						<CardPanel className="flex flex-col gap-3">
-							<Skeleton className="h-6 w-2/3 rounded-md" />
-							<Skeleton className="h-4 w-1/3 rounded-md" />
-							<Skeleton className="h-24 w-full rounded-xl" />
-							<Skeleton className="h-32 w-full rounded-xl" />
-						</CardPanel>
-					</Card>
+					<CardFrame>
+						<Card>
+							<CardPanel className="flex flex-col gap-3">
+								<Skeleton className="h-6 w-2/3 rounded-md" />
+								<Skeleton className="h-4 w-1/3 rounded-md" />
+								<Skeleton className="h-24 w-full rounded-xl" />
+								<Skeleton className="h-32 w-full rounded-xl" />
+							</CardPanel>
+						</Card>
+					</CardFrame>
 				</div>
 			</main>
 		);
@@ -473,49 +476,51 @@ function MeetingDetail(): React.ReactElement {
 					aria-labelledby="meeting-title"
 					className="flex flex-col gap-4"
 				>
-					<Card>
-						<CardHeader>
-							{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h1 with the meeting title as content. */}
-							<CardTitle id="meeting-title" render={<h1 />}>
+					<CardFrame>
+						<CardFrameHeader>
+							{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h1 with the meeting title as content. */}
+							<CardFrameTitle id="meeting-title" render={<h1 />}>
 								{meeting.title}
-							</CardTitle>
-							<CardDescription>
+							</CardFrameTitle>
+							<CardFrameDescription>
 								{formatDate(meeting.occurredAt)} ·{" "}
 								{formatDuration(meeting.durationSeconds)}
-							</CardDescription>
-							<CardAction>
+							</CardFrameDescription>
+							<CardFrameAction>
 								<MeetingStatusBadge status={meeting.status} />
-							</CardAction>
-						</CardHeader>
-						<CardPanel>
-							<div className="flex flex-col gap-3">
-								<Progress value={progressValue}>
-									<div className="flex items-center justify-between gap-2">
-										<ProgressLabel>Processing {meeting.status}</ProgressLabel>
-										<ProgressValue />
-									</div>
-									<ProgressTrack>
-										<ProgressIndicator />
-									</ProgressTrack>
-								</Progress>
-								<p className="text-sm" role="status">
-									This meeting is still being processed. Check back shortly for
-									the transcript and summary.
+							</CardFrameAction>
+						</CardFrameHeader>
+						<Card>
+							<CardPanel>
+								<div className="flex flex-col gap-3">
+									<Progress value={progressValue}>
+										<div className="flex items-center justify-between gap-2">
+											<ProgressLabel>Processing {meeting.status}</ProgressLabel>
+											<ProgressValue />
+										</div>
+										<ProgressTrack>
+											<ProgressIndicator />
+										</ProgressTrack>
+									</Progress>
+									<p className="text-sm" role="status">
+										This meeting is still being processed. Check back shortly
+										for the transcript and summary.
+									</p>
+								</div>
+							</CardPanel>
+						</Card>
+						<CardFrameFooter className="border-t py-3">
+							<div className="flex w-full flex-wrap items-center justify-between gap-2">
+								<p className="text-muted-foreground text-xs">
+									Processing runs automatically. Reload to check for updates.
 								</p>
+								<Button render={<Link to="/" />} size="sm" variant="link">
+									<ChevronLeftIcon aria-hidden="true" />
+									Back Home
+								</Button>
 							</div>
-						</CardPanel>
-						<CardFooter className="border-t py-3">
-							<p className="text-muted-foreground text-xs">
-								Processing runs automatically. Reload to check for updates.
-							</p>
-						</CardFooter>
-					</Card>
-					<div>
-						<Button render={<Link to="/" />} variant="link">
-							<ChevronLeftIcon aria-hidden="true" />
-							Back Home
-						</Button>
-					</div>
+						</CardFrameFooter>
+					</CardFrame>
 				</section>
 			</main>
 		);
@@ -526,26 +531,26 @@ function MeetingDetail(): React.ReactElement {
 	return (
 		<main className="container mx-auto w-full max-w-3xl px-4 py-6">
 			<section aria-labelledby="meeting-title" className="flex flex-col gap-4">
-				<Card>
-					<CardHeader>
-						{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h1 with the meeting title as content. */}
-						<CardTitle id="meeting-title" render={<h1 />}>
+				<CardFrame>
+					<CardFrameHeader>
+						{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h1 with the meeting title as content. */}
+						<CardFrameTitle id="meeting-title" render={<h1 />}>
 							{meeting.title}
-						</CardTitle>
-						<CardDescription>
+						</CardFrameTitle>
+						<CardFrameDescription>
 							{formatDate(meeting.occurredAt)} ·{" "}
 							{formatDuration(meeting.durationSeconds)}
-						</CardDescription>
-						<CardAction>
+						</CardFrameDescription>
+						<CardFrameAction>
 							<MeetingStatusBadge status={meeting.status} />
-						</CardAction>
-					</CardHeader>
-					<CardFooter className="border-t py-3">
+						</CardFrameAction>
+					</CardFrameHeader>
+					<CardFrameFooter className="border-t py-3">
 						<p className="text-muted-foreground text-xs">
 							Audio, transcript, and notes are kept together on this page.
 						</p>
-					</CardFooter>
-				</Card>
+					</CardFrameFooter>
+				</CardFrame>
 
 				{meeting.description ? (
 					<section aria-labelledby="meeting-description-heading">
@@ -611,19 +616,24 @@ function MeetingDetail(): React.ReactElement {
 							aria-labelledby="meeting-transcript-heading"
 							className="pt-2"
 						>
-							<Card>
-								<CardHeader>
-									{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h2 with the transcript title as content. */}
-									<CardTitle id="meeting-transcript-heading" render={<h2 />}>
+							<CardFrame>
+								<CardFrameHeader>
+									<CardFrameTitle
+										id="meeting-transcript-heading"
+										// biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h2 with the transcript title as content.
+										render={<h2 />}
+									>
 										Transcript
-									</CardTitle>
-								</CardHeader>
-								<CardPanel>
-									<p className="whitespace-pre-wrap text-sm leading-relaxed">
-										{meeting.transcript ?? "No transcript is available yet."}
-									</p>
-								</CardPanel>
-								<CardFooter className="border-t py-3">
+									</CardFrameTitle>
+								</CardFrameHeader>
+								<Card>
+									<CardPanel>
+										<p className="whitespace-pre-wrap text-sm leading-relaxed">
+											{meeting.transcript ?? "No transcript is available yet."}
+										</p>
+									</CardPanel>
+								</Card>
+								<CardFrameFooter className="border-t py-3">
 									<div className="flex gap-1 text-muted-foreground text-xs">
 										<CircleAlertIcon
 											aria-hidden="true"
@@ -634,25 +644,27 @@ function MeetingDetail(): React.ReactElement {
 											transcript.
 										</p>
 									</div>
-								</CardFooter>
-							</Card>
+								</CardFrameFooter>
+							</CardFrame>
 						</section>
 					</TabsPanel>
 					<TabsPanel value="summary">
 						<section aria-labelledby="meeting-summary-heading" className="pt-2">
-							<Card>
-								<CardHeader>
-									{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h2 with the summary title as content. */}
-									<CardTitle id="meeting-summary-heading" render={<h2 />}>
+							<CardFrame>
+								<CardFrameHeader>
+									{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h2 with the summary title as content. */}
+									<CardFrameTitle id="meeting-summary-heading" render={<h2 />}>
 										Summary
-									</CardTitle>
-								</CardHeader>
-								<CardPanel>
-									<p className="whitespace-pre-wrap text-sm leading-relaxed">
-										{meeting.summary ?? "No summary is available yet."}
-									</p>
-								</CardPanel>
-								<CardFooter className="border-t py-3">
+									</CardFrameTitle>
+								</CardFrameHeader>
+								<Card>
+									<CardPanel>
+										<p className="whitespace-pre-wrap text-sm leading-relaxed">
+											{meeting.summary ?? "No summary is available yet."}
+										</p>
+									</CardPanel>
+								</Card>
+								<CardFrameFooter className="border-t py-3">
 									<div className="flex gap-1 text-muted-foreground text-xs">
 										<CircleAlertIcon
 											aria-hidden="true"
@@ -663,8 +675,8 @@ function MeetingDetail(): React.ReactElement {
 											the audio.
 										</p>
 									</div>
-								</CardFooter>
-							</Card>
+								</CardFrameFooter>
+							</CardFrame>
 						</section>
 					</TabsPanel>
 					<TabsPanel value="takeaways">
@@ -672,30 +684,37 @@ function MeetingDetail(): React.ReactElement {
 							aria-labelledby="meeting-takeaways-heading"
 							className="pt-2"
 						>
-							<Card>
-								<CardHeader>
-									{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h2 with the takeaways title as content. */}
-									<CardTitle id="meeting-takeaways-heading" render={<h2 />}>
+							<CardFrame>
+								<CardFrameHeader>
+									<CardFrameTitle
+										id="meeting-takeaways-heading"
+										// biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h2 with the takeaways title as content.
+										render={<h2 />}
+									>
 										Key takeaways
-									</CardTitle>
-									<CardAction>
+									</CardFrameTitle>
+									<CardFrameAction>
 										<Badge variant="outline">{meeting.takeaways.length}</Badge>
-									</CardAction>
-								</CardHeader>
-								<CardPanel>
-									{meeting.takeaways.length > 0 ? (
-										<ul className="list-disc space-y-1 pl-5 text-sm">
-											{meeting.takeaways.map((takeaway, index) => (
-												<li key={`${String(index)}-${takeaway}`}>{takeaway}</li>
-											))}
-										</ul>
-									) : (
-										<p className="text-muted-foreground text-sm">
-											No takeaways were recorded.
-										</p>
-									)}
-								</CardPanel>
-								<CardFooter className="border-t py-3">
+									</CardFrameAction>
+								</CardFrameHeader>
+								<Card>
+									<CardPanel>
+										{meeting.takeaways.length > 0 ? (
+											<ul className="list-disc space-y-1 pl-5 text-sm">
+												{meeting.takeaways.map((takeaway, index) => (
+													<li key={`${String(index)}-${takeaway}`}>
+														{takeaway}
+													</li>
+												))}
+											</ul>
+										) : (
+											<p className="text-muted-foreground text-sm">
+												No takeaways were recorded.
+											</p>
+										)}
+									</CardPanel>
+								</Card>
+								<CardFrameFooter className="border-t py-3">
 									<div className="flex gap-1 text-muted-foreground text-xs">
 										<CircleAlertIcon
 											aria-hidden="true"
@@ -703,43 +722,45 @@ function MeetingDetail(): React.ReactElement {
 										/>
 										<p>Review each takeaway before sharing.</p>
 									</div>
-								</CardFooter>
-							</Card>
+								</CardFrameFooter>
+							</CardFrame>
 						</section>
 					</TabsPanel>
 					<TabsPanel value="actions">
 						<section aria-labelledby="meeting-actions-heading" className="pt-2">
-							<Card>
-								<CardHeader>
-									{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h2 with the action items title as content. */}
-									<CardTitle id="meeting-actions-heading" render={<h2 />}>
+							<CardFrame>
+								<CardFrameHeader>
+									{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h2 with the action items title as content. */}
+									<CardFrameTitle id="meeting-actions-heading" render={<h2 />}>
 										Action items
-									</CardTitle>
-									<CardAction>
+									</CardFrameTitle>
+									<CardFrameAction>
 										<Badge variant="outline">
 											{meeting.actionItems.length}
 										</Badge>
-									</CardAction>
-								</CardHeader>
-								<CardPanel>
-									{meeting.actionItems.length > 0 ? (
-										<ul className="list-disc space-y-1 pl-5 text-sm">
-											{meeting.actionItems.map((item, index) => (
-												<li
-													key={`${String(index)}-${item.owner ?? "unassigned"}-${item.text}`}
-												>
-													{item.text}
-													{item.owner ? ` (owner: ${item.owner})` : null}
-												</li>
-											))}
-										</ul>
-									) : (
-										<p className="text-muted-foreground text-sm">
-											No action items were recorded.
-										</p>
-									)}
-								</CardPanel>
-								<CardFooter className="border-t py-3">
+									</CardFrameAction>
+								</CardFrameHeader>
+								<Card>
+									<CardPanel>
+										{meeting.actionItems.length > 0 ? (
+											<ul className="list-disc space-y-1 pl-5 text-sm">
+												{meeting.actionItems.map((item, index) => (
+													<li
+														key={`${String(index)}-${item.owner ?? "unassigned"}-${item.text}`}
+													>
+														{item.text}
+														{item.owner ? ` (owner: ${item.owner})` : null}
+													</li>
+												))}
+											</ul>
+										) : (
+											<p className="text-muted-foreground text-sm">
+												No action items were recorded.
+											</p>
+										)}
+									</CardPanel>
+								</Card>
+								<CardFrameFooter className="border-t py-3">
 									<div className="flex gap-1 text-muted-foreground text-xs">
 										<CircleAlertIcon
 											aria-hidden="true"
@@ -747,8 +768,8 @@ function MeetingDetail(): React.ReactElement {
 										/>
 										<p>Assign an owner before marking an item complete.</p>
 									</div>
-								</CardFooter>
-							</Card>
+								</CardFrameFooter>
+							</CardFrame>
 						</section>
 					</TabsPanel>
 				</Tabs>
