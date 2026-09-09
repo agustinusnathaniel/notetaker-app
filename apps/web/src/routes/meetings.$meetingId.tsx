@@ -5,6 +5,16 @@ import {
 	AlertDescription,
 	AlertTitle,
 } from "@notetaker-app/ui/components/alert";
+import {
+	AlertDialog,
+	AlertDialogClose,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogPopup,
+	AlertDialogTitle,
+	AlertDialogTrigger,
+} from "@notetaker-app/ui/components/alert-dialog";
 import { Badge } from "@notetaker-app/ui/components/badge";
 import { Button } from "@notetaker-app/ui/components/button";
 import {
@@ -17,6 +27,18 @@ import {
 	CardFrameTitle,
 	CardPanel,
 } from "@notetaker-app/ui/components/card";
+import { Checkbox } from "@notetaker-app/ui/components/checkbox";
+import {
+	Dialog,
+	DialogClose,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogPanel,
+	DialogPopup,
+	DialogTitle,
+	DialogTrigger,
+} from "@notetaker-app/ui/components/dialog";
 import {
 	Empty,
 	EmptyContent,
@@ -25,6 +47,12 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@notetaker-app/ui/components/empty";
+import {
+	Field,
+	FieldError,
+	FieldLabel,
+} from "@notetaker-app/ui/components/field";
+import { Input } from "@notetaker-app/ui/components/input";
 import {
 	Progress,
 	ProgressIndicator,
@@ -40,20 +68,26 @@ import {
 	TabsPanel,
 	TabsTab,
 } from "@notetaker-app/ui/components/tabs";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { Textarea } from "@notetaker-app/ui/components/textarea";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
 	ChevronLeftIcon,
 	CircleAlertIcon,
 	FileTextIcon,
 	ListChecksIcon,
 	ListTodoIcon,
+	PencilIcon,
 	PlusIcon,
 	ScrollTextIcon,
 	SearchXIcon,
+	Trash2Icon,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { MeetingMarkdown } from "@/components/markdown";
 import {
+	type ActionItem,
 	audioUrlFor,
+	deleteMeeting,
 	fetchMeeting,
 	formatDate,
 	formatDuration,
@@ -61,6 +95,7 @@ import {
 	type PublicMeeting,
 	requestSummary,
 	requestTranscription,
+	updateMeeting,
 } from "@/lib/meetings";
 
 export const Route = createFileRoute("/meetings/$meetingId")({
@@ -278,11 +313,289 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 	);
 }
 
+function EditMeetingDialog({
+	meeting,
+	onUpdated,
+}: {
+	readonly meeting: PublicMeeting;
+	readonly onUpdated: (updated: PublicMeeting) => void;
+}): React.ReactElement {
+	const [open, setOpen] = useState<boolean>(false);
+	const [title, setTitle] = useState<string>(meeting.title);
+	const [description, setDescription] = useState<string>(
+		meeting.description ?? ""
+	);
+	const [fieldError, setFieldError] = useState<string | null>(null);
+	const [saving, setSaving] = useState<boolean>(false);
+
+	const handleOpenChange = useCallback(
+		(next: boolean) => {
+			setOpen(next);
+			if (next) {
+				setTitle(meeting.title);
+				setDescription(meeting.description ?? "");
+				setFieldError(null);
+				setSaving(false);
+			}
+		},
+		[meeting]
+	);
+
+	const handleTitleChange = useCallback(
+		(event: React.ChangeEvent<HTMLInputElement>): void => {
+			setTitle(event.target.value);
+		},
+		[]
+	);
+
+	const handleDescriptionChange = useCallback(
+		(event: React.ChangeEvent<HTMLTextAreaElement>): void => {
+			setDescription(event.target.value);
+		},
+		[]
+	);
+
+	const handleSubmit = useCallback(
+		(event: React.FormEvent<HTMLFormElement>): void => {
+			event.preventDefault();
+			const nextTitle = title.trim();
+			if (!nextTitle) {
+				setFieldError("Title is required.");
+				return;
+			}
+			if (nextTitle.length > 100) {
+				setFieldError("Title must be 100 characters or fewer.");
+				return;
+			}
+			const trimmedDescription = description.trim();
+			if (trimmedDescription.length > 200) {
+				setFieldError("Description must be 200 characters or fewer.");
+				return;
+			}
+			setFieldError(null);
+			setSaving(true);
+			updateMeeting(meeting.id, {
+				description: trimmedDescription ? trimmedDescription : null,
+				title: nextTitle,
+			})
+				.then((updated) => {
+					setSaving(false);
+					setOpen(false);
+					onUpdated(updated);
+				})
+				.catch((error: unknown) => {
+					setSaving(false);
+					setFieldError(
+						error instanceof Error
+							? error.message
+							: "Could not save changes. Please try again."
+					);
+				});
+		},
+		[description, meeting.id, onUpdated, title]
+	);
+
+	return (
+		<Dialog onOpenChange={handleOpenChange} open={open}>
+			<DialogTrigger
+				render={
+					<Button size="sm" variant="outline">
+						<PencilIcon aria-hidden="true" />
+						Edit
+					</Button>
+				}
+			/>
+			<DialogPopup>
+				<DialogHeader>
+					<DialogTitle>Edit meeting</DialogTitle>
+					<DialogDescription>
+						Update the title and description for this meeting.
+					</DialogDescription>
+				</DialogHeader>
+				<form className="contents" onSubmit={handleSubmit}>
+					<DialogPanel>
+						<div className="flex flex-col gap-4">
+							<Field invalid={!!fieldError}>
+								<FieldLabel htmlFor="meeting-title-input">Title</FieldLabel>
+								<Input
+									disabled={saving}
+									id="meeting-title-input"
+									maxLength={100}
+									onChange={handleTitleChange}
+									value={title}
+								/>
+							</Field>
+							<Field>
+								<FieldLabel htmlFor="meeting-description-input">
+									Description
+								</FieldLabel>
+								<Textarea
+									disabled={saving}
+									id="meeting-description-input"
+									maxLength={200}
+									onChange={handleDescriptionChange}
+									rows={3}
+									value={description}
+								/>
+							</Field>
+							{fieldError ? (
+								<FieldError match={true}>{fieldError}</FieldError>
+							) : null}
+						</div>
+					</DialogPanel>
+					<DialogFooter>
+						<DialogClose
+							render={
+								<Button type="button" variant="ghost">
+									Cancel
+								</Button>
+							}
+						/>
+						<Button disabled={saving} loading={saving} type="submit">
+							Save changes
+						</Button>
+					</DialogFooter>
+				</form>
+			</DialogPopup>
+		</Dialog>
+	);
+}
+
+function DeleteMeetingDialog({
+	meetingId,
+}: {
+	readonly meetingId: string;
+}): React.ReactElement {
+	const navigate = useNavigate();
+	const [error, setError] = useState<string | null>(null);
+	const [deleting, setDeleting] = useState<boolean>(false);
+
+	const handleConfirm = useCallback((): void => {
+		setError(null);
+		setDeleting(true);
+		deleteMeeting(meetingId)
+			.then(() => {
+				navigate({ to: "/" }).catch(() => undefined);
+			})
+			.catch((failure: unknown) => {
+				setDeleting(false);
+				setError(
+					failure instanceof Error
+						? failure.message
+						: "Could not delete this meeting. Please try again."
+				);
+			});
+	}, [meetingId, navigate]);
+
+	return (
+		<AlertDialog>
+			<AlertDialogTrigger
+				render={
+					<Button size="sm" variant="destructive-outline">
+						<Trash2Icon aria-hidden="true" />
+						Delete
+					</Button>
+				}
+			/>
+			<AlertDialogPopup>
+				<AlertDialogHeader>
+					<AlertDialogTitle>Delete this meeting?</AlertDialogTitle>
+					<AlertDialogDescription>
+						This removes the meeting, its audio, transcript, and notes. This
+						action cannot be undone.
+					</AlertDialogDescription>
+				</AlertDialogHeader>
+				{error ? (
+					<div className="px-6">
+						<Alert variant="error">
+							<CircleAlertIcon />
+							<AlertTitle>Delete failed</AlertTitle>
+							<AlertDescription>{error}</AlertDescription>
+						</Alert>
+					</div>
+				) : null}
+				<AlertDialogFooter>
+					<AlertDialogClose
+						render={
+							<Button type="button" variant="ghost">
+								Cancel
+							</Button>
+						}
+					/>
+					<Button
+						disabled={deleting}
+						loading={deleting}
+						onClick={handleConfirm}
+						type="button"
+						variant="destructive"
+					>
+						Delete meeting
+					</Button>
+				</AlertDialogFooter>
+			</AlertDialogPopup>
+		</AlertDialog>
+	);
+}
+
+function ActionItemsList({
+	disabled,
+	items,
+	onToggle,
+	togglingId,
+}: {
+	readonly disabled: boolean;
+	readonly items: ActionItem[];
+	readonly onToggle: (id: string, completed: boolean) => void;
+	readonly togglingId: string | null;
+}): React.ReactElement {
+	if (items.length === 0) {
+		return (
+			<p className="text-muted-foreground text-sm">
+				No action items were recorded.
+			</p>
+		);
+	}
+	return (
+		<ul className="flex list-none flex-col gap-2 p-0">
+			{items.map((item) => (
+				<li key={item.id}>
+					<label className="flex cursor-pointer items-start gap-2.5 text-sm">
+						<Checkbox
+							checked={item.completed}
+							className="mt-0.5"
+							disabled={disabled || togglingId === item.id}
+							onCheckedChange={(checked: boolean | "indeterminate"): void => {
+								onToggle(item.id, checked === true);
+							}}
+						/>
+						<span className="flex flex-col gap-0.5">
+							<span
+								className={
+									item.completed ? "text-muted-foreground line-through" : ""
+								}
+							>
+								{item.text}
+							</span>
+							{item.owner ? (
+								<span className="text-muted-foreground text-xs">
+									Owner: {item.owner}
+								</span>
+							) : null}
+						</span>
+					</label>
+				</li>
+			))}
+		</ul>
+	);
+}
+
 function MeetingDetail(): React.ReactElement {
 	const { meetingId } = Route.useParams();
 	const [state, setState] = useState<DetailState>({ status: "loading" });
 	const [retryStage, setRetryStage] = useState<RetryStage>("idle");
 	const [retryError, setRetryError] = useState<string | null>(null);
+	const [togglingId, setTogglingId] = useState<string | null>(null);
+	const [actionError, setActionError] = useState<string | null>(null);
 
 	const load = useCallback(
 		(signal?: AbortSignal) => {
@@ -368,6 +681,46 @@ function MeetingDetail(): React.ReactElement {
 	const handleRetrySummaryClick = useCallback((): void => {
 		handleRetrySummary().catch(() => undefined);
 	}, [handleRetrySummary]);
+
+	const handleMeetingUpdated = useCallback((updated: PublicMeeting): void => {
+		setState({ status: "ready", meeting: updated });
+	}, []);
+
+	const handleToggleActionItem = useCallback(
+		(id: string, completed: boolean): void => {
+			if (state.status !== "ready") {
+				return;
+			}
+			const previous = state.meeting.actionItems;
+			const next = previous.map((item) =>
+				item.id === id ? { ...item, completed } : item
+			);
+			setState({
+				status: "ready",
+				meeting: { ...state.meeting, actionItems: next },
+			});
+			setTogglingId(id);
+			setActionError(null);
+			updateMeeting(meetingId, { actionItems: next })
+				.then((updated) => {
+					setTogglingId(null);
+					setState({ status: "ready", meeting: updated });
+				})
+				.catch((error: unknown) => {
+					setTogglingId(null);
+					setState({
+						status: "ready",
+						meeting: { ...state.meeting, actionItems: previous },
+					});
+					setActionError(
+						error instanceof Error
+							? error.message
+							: "Could not update this action item. Please try again."
+					);
+				});
+		},
+		[meetingId, state]
+	);
 
 	if (state.status === "loading") {
 		return (
@@ -542,7 +895,14 @@ function MeetingDetail(): React.ReactElement {
 							{formatDuration(meeting.durationSeconds)}
 						</CardFrameDescription>
 						<CardFrameAction>
-							<MeetingStatusBadge status={meeting.status} />
+							<div className="flex flex-wrap items-center gap-2">
+								<MeetingStatusBadge status={meeting.status} />
+								<EditMeetingDialog
+									meeting={meeting}
+									onUpdated={handleMeetingUpdated}
+								/>
+								<DeleteMeetingDialog meetingId={meeting.id} />
+							</div>
 						</CardFrameAction>
 					</CardFrameHeader>
 					<CardFrameFooter className="border-t py-3">
@@ -659,9 +1019,11 @@ function MeetingDetail(): React.ReactElement {
 								</CardFrameHeader>
 								<Card>
 									<CardPanel>
-										<p className="whitespace-pre-wrap text-sm leading-relaxed">
-											{meeting.summary ?? "No summary is available yet."}
-										</p>
+										{meeting.summary ? (
+											<MeetingMarkdown text={meeting.summary} />
+										) : (
+											<p className="text-sm">No summary is available yet.</p>
+										)}
 									</CardPanel>
 								</Card>
 								<CardFrameFooter className="border-t py-3">
@@ -700,10 +1062,10 @@ function MeetingDetail(): React.ReactElement {
 								<Card>
 									<CardPanel>
 										{meeting.takeaways.length > 0 ? (
-											<ul className="list-disc space-y-1 pl-5 text-sm">
+											<ul className="flex list-none flex-col gap-3 p-0">
 												{meeting.takeaways.map((takeaway, index) => (
-													<li key={`${String(index)}-${takeaway}`}>
-														{takeaway}
+													<li key={`${String(index)}-${takeaway.slice(0, 32)}`}>
+														<MeetingMarkdown text={takeaway} />
 													</li>
 												))}
 											</ul>
@@ -742,22 +1104,30 @@ function MeetingDetail(): React.ReactElement {
 								</CardFrameHeader>
 								<Card>
 									<CardPanel>
-										{meeting.actionItems.length > 0 ? (
-											<ul className="list-disc space-y-1 pl-5 text-sm">
-												{meeting.actionItems.map((item, index) => (
-													<li
-														key={`${String(index)}-${item.owner ?? "unassigned"}-${item.text}`}
-													>
-														{item.text}
-														{item.owner ? ` (owner: ${item.owner})` : null}
-													</li>
-												))}
-											</ul>
-										) : (
-											<p className="text-muted-foreground text-sm">
-												No action items were recorded.
-											</p>
-										)}
+										<div className="flex flex-col gap-3">
+											{togglingId ? (
+												<p
+													aria-live="polite"
+													className="text-muted-foreground text-xs"
+													role="status"
+												>
+													Saving change…
+												</p>
+											) : null}
+											{actionError ? (
+												<Alert variant="error">
+													<CircleAlertIcon />
+													<AlertTitle>Could not update</AlertTitle>
+													<AlertDescription>{actionError}</AlertDescription>
+												</Alert>
+											) : null}
+											<ActionItemsList
+												disabled={togglingId !== null}
+												items={meeting.actionItems}
+												onToggle={handleToggleActionItem}
+												togglingId={togglingId}
+											/>
+										</div>
 									</CardPanel>
 								</Card>
 								<CardFrameFooter className="border-t py-3">

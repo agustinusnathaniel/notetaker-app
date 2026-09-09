@@ -8,6 +8,8 @@ export interface TranscriptSegment {
 }
 
 export interface ActionItem {
+	completed: boolean;
+	id: string;
 	owner: string | null;
 	text: string;
 }
@@ -268,6 +270,46 @@ export async function requestSummary(
 	}
 	const body: unknown = await response.json();
 	return parseMeetingDetail(body);
+}
+
+export interface UpdateMeetingInput {
+	readonly actionItems?: ActionItem[];
+	readonly description?: string | null;
+	readonly title?: string;
+}
+
+export async function updateMeeting(
+	meetingId: string,
+	input: UpdateMeetingInput,
+	signal?: AbortSignal
+): Promise<PublicMeeting> {
+	const response = await fetch(
+		`${env.VITE_SERVER_URL}/api/meetings/${meetingId}`,
+		{
+			body: JSON.stringify(input),
+			headers: { "Content-Type": "application/json" },
+			method: "PATCH",
+			signal,
+		}
+	);
+	if (!response.ok) {
+		await parseErrorResponse(response);
+	}
+	const body: unknown = await response.json();
+	return parseMeetingDetail(body);
+}
+
+export async function deleteMeeting(
+	meetingId: string,
+	signal?: AbortSignal
+): Promise<void> {
+	const response = await fetch(
+		`${env.VITE_SERVER_URL}/api/meetings/${meetingId}`,
+		{ method: "DELETE", signal }
+	);
+	if (!response.ok) {
+		await parseErrorResponse(response);
+	}
 }
 
 export function audioUrlFor(serverUrl: string, meetingId: string): string {
