@@ -1,9 +1,21 @@
-import * as Alchemy from "alchemy";
-import * as Cloudflare from "alchemy/Cloudflare";
+import { Stack } from "alchemy";
+import type { InferEnv } from "alchemy/Cloudflare";
+import {
+	Worker as CloudflareWorker,
+	providers,
+	R2,
+	state,
+	Website,
+	Workers,
+} from "alchemy/Cloudflare";
 import { retain } from "alchemy/RemovalPolicy";
 import { config } from "dotenv";
-import * as Config from "effect/Config";
-import * as Effect from "effect/Effect";
+import {
+	redacted as configRedacted,
+	string as configString,
+	withDefault as configWithDefault,
+} from "effect/Config";
+import { gen } from "effect/Effect";
 import { make as makeRedacted } from "effect/Redacted";
 
 config({ path: "./.env" });
@@ -15,11 +27,11 @@ config({ path: "../../apps/server/.env" });
 // existing bucket by name instead of creating a duplicate. Retained on
 // stack removal so stored audio survives; R2 has no ownership tags so a
 // same-named bucket is silently adopted rather than recreated.
-export const audioBucket = Cloudflare.R2.Bucket("fft", {
+export const audioBucket = R2.Bucket("fft", {
 	name: "fft",
 }).pipe(retain());
 
-export const server = Cloudflare.Worker("server", {
+export const server = CloudflareWorker("server", {
 	compatibility: {
 		flags: ["nodejs_compat", "enable_request_signal"],
 	},
@@ -27,34 +39,34 @@ export const server = Cloudflare.Worker("server", {
 		port: 3000,
 	},
 	env: {
-		AI: Cloudflare.Workers.AI(),
+		AI: Workers.AI(),
 		AUDIO_BUCKET: audioBucket,
-		CORS_EXTRA_ORIGINS: Config.withDefault(
-			Config.string("CORS_EXTRA_ORIGINS"),
+		CORS_EXTRA_ORIGINS: configWithDefault(
+			configString("CORS_EXTRA_ORIGINS"),
 			""
 		),
-		CORS_ORIGIN: Config.string("CORS_ORIGIN"),
-		DATABASE_URL: Config.redacted("DATABASE_URL"),
-		DEEPGRAM_API_KEY: Config.redacted("DEEPGRAM_API_KEY"),
-		GROQ_API_KEY: Config.withDefault(
-			Config.redacted("GROQ_API_KEY"),
+		CORS_ORIGIN: configString("CORS_ORIGIN"),
+		DATABASE_URL: configRedacted("DATABASE_URL"),
+		DEEPGRAM_API_KEY: configRedacted("DEEPGRAM_API_KEY"),
+		GROQ_API_KEY: configWithDefault(
+			configRedacted("GROQ_API_KEY"),
 			makeRedacted("")
 		),
 	},
 	main: "../../apps/server/src/index.ts",
 });
 
-export type ServerEnv = Cloudflare.InferEnv<typeof server>;
+export type ServerEnv = InferEnv<typeof server>;
 
-export default Alchemy.Stack(
+export default Stack(
 	"notetaker-app",
 	{
-		providers: Cloudflare.providers(),
-		state: Cloudflare.state(),
+		providers: providers(),
+		state: state(),
 	},
-	Effect.gen(function* () {
+	gen(function* () {
 		const serverWorker = yield* server;
-		const webWorker = yield* Cloudflare.Website.Vite("web", {
+		const webWorker = yield* Website.Vite("web", {
 			assets: {
 				htmlHandling: "auto-trailing-slash",
 				notFoundHandling: "single-page-application",
