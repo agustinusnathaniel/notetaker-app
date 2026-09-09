@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "build": "vp build",
-    "serve": "vp preview",
-    "start": "vp dev",
     "check-types": "vp build && tsc --noEmit",
-    "dev:bare": "vp dev"
+    "dev:bare": "vp dev",
+    "serve": "vp preview",
+    "start": "vp dev"
   },
   "dependencies": {
     "@notetaker-app/env": "workspace:*",
@@ -20,6 +20,8 @@
     "next-themes": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "sonner": "catalog:",
     "zod": "catalog:"
   },

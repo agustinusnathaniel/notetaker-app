@@ -280,9 +280,59 @@ function storageFailure(
 	return { _tag: "StorageFailure", cause, meetingId };
 }
 
+function isUuid(value: unknown): value is string {
+	return typeof value === "string" && UUID_PATTERN.test(value);
+}
+
+function normalizeActionItems(value: unknown): ActionItem[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+	const normalized: ActionItem[] = [];
+	for (const entry of value) {
+		if (typeof entry !== "object" || entry === null) {
+			continue;
+		}
+		const record = entry as Record<string, unknown>;
+		if (typeof record.text !== "string") {
+			continue;
+		}
+		const text = record.text.trim();
+		if (!text) {
+			continue;
+		}
+		const owner =
+			typeof record.owner === "string" && record.owner.trim().length > 0
+				? record.owner.trim().slice(0, 100)
+				: null;
+		normalized.push({
+			completed:
+				typeof record.completed === "boolean" ? record.completed : false,
+			id: isUuid(record.id) ? record.id : crypto.randomUUID(),
+			owner,
+			text: text.slice(0, 240),
+		});
+		if (normalized.length >= 8) {
+			break;
+		}
+	}
+	return normalized;
+}
+
+function withActionItemIds(
+	items: MeetingAnalysis["actionItems"]
+): ActionItem[] {
+	return items.map((item) => ({
+		completed: false,
+		id: crypto.randomUUID(),
+		owner: item.owner,
+		text: item.text,
+	}));
+}
+
 function toPublicMeeting(row: Meeting): PublicMeeting {
 	return {
-		actionItems: row.actionItems,
+		actionItems: normalizeActionItems(row.actionItems),
 		audioAvailable: row.audioKey !== null,
 		audioBytes: row.audioBytes,
 		audioMimeType: row.audioMimeType,
@@ -754,7 +804,7 @@ function runSummaryProviderAndPersist(
 				context.db
 					.update(meetings)
 					.set({
-						actionItems: analysis.actionItems,
+						actionItems: withActionItemIds(analysis.actionItems),
 						description: analysis.description,
 						failedStage: null,
 						status: "completed",
@@ -1276,6 +1326,122 @@ function resolveMeetingAudio(
 	);
 }
 
+const UpdateMeetingSchema = z
+	.object({
+		actionItems: z
+			.array(
+				z.object({
+					completed: z.boolean(),
+					id: z.string().regex(UUID_PATTERN),
+					owner: z.string().trim().max(100).nullable(),
+					text: z.string().trim().min(1).max(240),
+				})
+			)
+			.max(8)
+			.optional(),
+		description: z.string().trim().max(200).nullable().optional(),
+		title: z.string().trim().min(1).max(100).optional(),
+	})
+	.refine((value) => Object.keys(value).length > 0, {
+		message: "Provide at least one field to update.",
+	});
+
+function patchMeeting(
+	meetingIdParam: string,
+	raw: unknown
+): Effect.Effect<Outcome<PublicMeeting>, never> {
+	const program = Effect.gen(function* () {
+		const meetingId = yield* parseMeetingId(meetingIdParam);
+		const parsed = UpdateMeetingSchema.safeParse(raw);
+		if (!parsed.success) {
+			return yield* Effect.fail(invalidBody("The request body is invalid."));
+		}
+		const db = yield* makeDb();
+		yield* findMeetingById(db, meetingId);
+		const patch: Partial<Meeting> = { updatedAt: new Date() };
+		if (parsed.data.title !== undefined) {
+			patch.title = parsed.data.title;
+		}
+		if (parsed.data.description !== undefined) {
+			const description = parsed.data.description?.trim() ?? "";
+			patch.description = description ? description : null;
+		}
+		if (parsed.data.actionItems !== undefined) {
+			patch.actionItems = parsed.data.actionItems.map((item) => ({
+				completed: item.completed,
+				id: item.id,
+				owner: item.owner?.trim() ? item.owner.trim() : null,
+				text: item.text,
+			}));
+		}
+		const rows = yield* Effect.tryPromise({
+			try: () =>
+				db
+					.update(meetings)
+					.set(patch)
+					.where(eq(meetings.id, meetingId))
+					.returning(),
+			catch: (cause): StorageFailure => storageFailure(cause, meetingId),
+		});
+		const [updated] = rows;
+		if (!updated) {
+			return yield* Effect.fail(meetingNotFound());
+		}
+		return { data: toPublicMeeting(updated), kind: "success" } as const;
+	});
+
+	return program.pipe(
+		Effect.catchTags({
+			InvalidMeetingId: (error) =>
+				Effect.succeed({ error: toHttpError(error), kind: "error" } as const),
+			MeetingNotFound: (error) =>
+				Effect.succeed({ error: toHttpError(error), kind: "error" } as const),
+			InvalidBody: (error) =>
+				Effect.succeed({ error: toHttpError(error), kind: "error" } as const),
+			StorageFailure: (error) =>
+				Effect.succeed({ error: toHttpError(error), kind: "error" } as const),
+		})
+	);
+}
+
+function deleteMeeting(
+	meetingIdParam: string
+): Effect.Effect<Outcome<null>, never> {
+	const program = Effect.gen(function* () {
+		const meetingId = yield* parseMeetingId(meetingIdParam);
+		const db = yield* makeDb();
+		const row = yield* findMeetingById(db, meetingId);
+		if (row.audioKey) {
+			yield* Effect.tryPromise({
+				try: () => env.AUDIO_BUCKET.delete(row.audioKey as string),
+				catch: (cause) => {
+					console.error(
+						`Failed to delete audio object for meeting ${meetingId}:`,
+						cause
+					);
+					return null;
+				},
+			}).pipe(Effect.ignore);
+		}
+		yield* Effect.tryPromise({
+			try: () => db.delete(meetings).where(eq(meetings.id, meetingId)),
+			catch: (cause): StorageFailure => storageFailure(cause, meetingId),
+		});
+		return { data: null, kind: "success" } as const;
+	});
+
+	return program.pipe(
+		Effect.catchTags({
+			InvalidMeetingId: (error) =>
+				Effect.succeed({ error: toHttpError(error), kind: "error" } as const),
+			MeetingNotFound: (error) =>
+				Effect.succeed({ error: toHttpError(error), kind: "error" } as const),
+			StorageFailure: (error) =>
+				Effect.succeed({ error: toHttpError(error), kind: "error" } as const),
+		})
+	);
+}
+
 const meetingsRouter = new Hono();
 
 meetingsRouter.get("/api/meetings", async (c) => {
@@ -1326,6 +1492,47 @@ meetingsRouter.get("/api/meetings/:meetingId", async (c) => {
 	}
 
 	return c.json({ meeting: outcome.data });
+});
+
+meetingsRouter.patch("/api/meetings/:meetingId", async (c) => {
+	let raw: unknown;
+	try {
+		raw = await c.req.json();
+	} catch {
+		const error = toHttpError(invalidBody("The request body is invalid."));
+		return c.json(
+			{ error: { code: error.code, message: error.message } },
+			error.status
+		);
+	}
+
+	const outcome = await Effect.runPromise(
+		patchMeeting(c.req.param("meetingId"), raw)
+	);
+
+	if (outcome.kind === "error") {
+		return c.json(
+			{ error: { code: outcome.error.code, message: outcome.error.message } },
+			outcome.error.status
+		);
+	}
+
+	return c.json({ meeting: outcome.data });
+});
+
+meetingsRouter.delete("/api/meetings/:meetingId", async (c) => {
+	const outcome = await Effect.runPromise(
+		deleteMeeting(c.req.param("meetingId"))
+	);
+
+	if (outcome.kind === "error") {
+		return c.json(
+			{ error: { code: outcome.error.code, message: outcome.error.message } },
+			outcome.error.status
+		);
+	}
+
+	return new Response(null, { status: 204 });
 });
 
 meetingsRouter.put("/api/meetings/:meetingId/audio", async (c) => {

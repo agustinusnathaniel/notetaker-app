@@ -15,6 +15,8 @@ export interface TranscriptSegment {
 }
 
 export interface ActionItem {
+	completed: boolean;
+	id: string;
 	owner: string | null;
 	text: string;
 }

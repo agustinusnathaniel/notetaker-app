@@ -240,9 +240,9 @@ function MeetingsLibrary(): React.ReactElement {
 											</CardHeader>
 										</Card>
 										<CardFrameFooter className="border-t py-3">
-											<div className="flex w-full items-center justify-between gap-2">
-												<div className="flex flex-wrap items-center gap-2 text-muted-foreground text-sm">
-													<span>
+											<div className="flex w-full min-w-0 items-center justify-between gap-2">
+												<div className="flex min-w-0 flex-wrap items-center gap-2 text-muted-foreground text-sm">
+													<span className="min-w-0 truncate">
 														{formatDate(meeting.occurredAt)} ·{" "}
 														{formatDuration(meeting.durationSeconds)}
 													</span>

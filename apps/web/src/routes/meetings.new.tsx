@@ -59,6 +59,13 @@ export const Route = createFileRoute("/meetings/new")({
 });
 
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+// Warn at ~20 MiB so the speaker can wrap up before the hard cap stops capture.
+const RECORD_WARN_BYTES = 20 * 1024 * 1024;
+// Capacity math (documented for the 1-2hr guidance below): Opus 32kbps is
+// 4KB/s, so 1hr is ~14.4MB and fits ~1.8hr in 25MiB. At 64kbps 1hr is
+// ~28.8MB, exceeding the cap at ~55min. Chrome MediaRecorder defaults run
+// ~50-128kbps, capping recordings at ~27-60min. MP3 128k caps at ~27min,
+// WAV mono 16-bit/44.1kHz (~86KB/s) at ~5min, stereo at ~2.5min.
 const ACCEPT_VALUE = ".mp3,.wav,.m4a,.ogg,.oga,.opus,.flac,.aac,.webm";
 
 const RECORD_MIME_CANDIDATES: readonly string[] = [
@@ -200,6 +207,10 @@ function formatRecordingTime(totalSeconds: number): string {
 	return `${String(minutes)}:${String(seconds).padStart(2, "0")}`;
 }
 
+function formatMegabytes(bytes: number): string {
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
 function microphoneErrorMessage(error: unknown): string {
 	const name =
 		error instanceof DOMException || error instanceof Error ? error.name : "";
@@ -267,10 +278,12 @@ interface RecordingReady {
 }
 
 interface AudioRecorder {
+	capReached: boolean;
 	discardRecording: () => void;
 	isRecording: boolean;
 	pendingRecording: File | null;
 	recordError: string | null;
+	recordedBytes: number;
 	recordedUrl: string | null;
 	recordingSeconds: number;
 	startRecording: () => Promise<void>;
@@ -287,8 +300,11 @@ function useAudioRecorder(options: {
 	const timerRef = useRef<number | null>(null);
 	const recordedUrlRef = useRef<string | null>(null);
 	const recordingSecondsRef = useRef<number>(0);
+	const recordedBytesRef = useRef<number>(0);
 	const [isRecording, setIsRecording] = useState<boolean>(false);
 	const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
+	const [recordedBytes, setRecordedBytes] = useState<number>(0);
+	const [capReached, setCapReached] = useState<boolean>(false);
 	const [recordedUrl, setRecordedUrl] = useState<string | null>(null);
 	const [recordError, setRecordError] = useState<string | null>(null);
 	const [pendingRecording, setPendingRecording] = useState<File | null>(null);
@@ -351,6 +367,9 @@ function useAudioRecorder(options: {
 			const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 			streamRef.current = stream;
 			chunksRef.current = [];
+			recordedBytesRef.current = 0;
+			setRecordedBytes(0);
+			setCapReached(false);
 			const mimeType = pickRecordingMimeType();
 			const recorder = mimeType
 				? new MediaRecorder(stream, { mimeType })
@@ -361,6 +380,20 @@ function useAudioRecorder(options: {
 			recorder.ondataavailable = (event: BlobEvent): void => {
 				if (event.data.size > 0) {
 					chunksRef.current.push(event.data);
+					recordedBytesRef.current += event.data.size;
+					setRecordedBytes(recordedBytesRef.current);
+					if (recordedBytesRef.current >= MAX_AUDIO_BYTES) {
+						setCapReached(true);
+						setIsRecording(false);
+						stopTimer();
+						if (recorder.state !== "inactive") {
+							try {
+								recorder.stop();
+							} catch {
+								// onstop errors surface through stopRecording handling.
+							}
+						}
+					}
 				}
 			};
 			recorder.onstop = (): void => {
@@ -383,7 +416,7 @@ function useAudioRecorder(options: {
 				});
 				stopMediaTracks();
 			};
-			recorder.start();
+			recorder.start(1000);
 			setIsRecording(true);
 			stopTimer();
 			timerRef.current = window.setInterval(() => {
@@ -428,14 +461,19 @@ function useAudioRecorder(options: {
 		setRecordedUrl(null);
 		recordingSecondsRef.current = 0;
 		setRecordingSeconds(0);
+		recordedBytesRef.current = 0;
+		setRecordedBytes(0);
+		setCapReached(false);
 		setRecordError(null);
 	}, [revokeRecordedUrl]);
 
 	return {
+		capReached,
 		discardRecording,
 		isRecording,
 		pendingRecording,
 		recordError,
+		recordedBytes,
 		recordedUrl,
 		recordingSeconds,
 		startRecording,
@@ -556,6 +594,7 @@ function UploadPanel(props: UploadPanelProps): React.ReactElement {
 }
 
 interface RecordingPanelProps {
+	capReached: boolean;
 	disabled: boolean;
 	durationSeconds: number;
 	fieldError: string | null;
@@ -567,12 +606,51 @@ interface RecordingPanelProps {
 	onRecordStop: () => void;
 	onUseRecording: () => void;
 	recordError: string | null;
+	recordedBytes: number;
 	recordedUrl: string | null;
 	recordingSeconds: number;
 }
 
+function RecordingCapNotices({
+	capReached,
+	isRecording,
+	recordedBytes,
+}: {
+	readonly capReached: boolean;
+	readonly isRecording: boolean;
+	readonly recordedBytes: number;
+}): React.ReactElement | null {
+	if (capReached) {
+		return (
+			<Alert variant="warning">
+				<CircleAlertIcon />
+				<AlertTitle>Recording cap reached</AlertTitle>
+				<AlertDescription>
+					Recording stopped at the 25 MiB cap. Submit what you have below; the
+					server also enforces the 25 MiB limit.
+				</AlertDescription>
+			</Alert>
+		);
+	}
+	if (isRecording && recordedBytes >= RECORD_WARN_BYTES) {
+		return (
+			<Alert variant="warning">
+				<CircleAlertIcon />
+				<AlertTitle>Approaching the size limit</AlertTitle>
+				<AlertDescription>
+					Recording is at {formatMegabytes(recordedBytes)} of 25 MiB. Wrap up
+					soon; recording stops automatically at the cap and you can submit what
+					you have.
+				</AlertDescription>
+			</Alert>
+		);
+	}
+	return null;
+}
+
 function RecordingPanel(props: RecordingPanelProps): React.ReactElement {
 	const {
+		capReached,
 		disabled,
 		durationSeconds,
 		fieldError,
@@ -584,6 +662,7 @@ function RecordingPanel(props: RecordingPanelProps): React.ReactElement {
 		onRecordStop,
 		onUseRecording,
 		recordError,
+		recordedBytes,
 		recordedUrl,
 		recordingSeconds,
 	} = props;
@@ -615,9 +694,17 @@ function RecordingPanel(props: RecordingPanelProps): React.ReactElement {
 				{showTimer ? (
 					<p aria-live="polite" className="text-muted-foreground text-sm">
 						{timerLabel} {formatRecordingTime(recordingSeconds)}
+						{isRecording
+							? ` · ${formatMegabytes(recordedBytes)} / 25 MiB`
+							: null}
 					</p>
 				) : null}
 			</div>
+			<RecordingCapNotices
+				capReached={capReached}
+				isRecording={isRecording}
+				recordedBytes={recordedBytes}
+			/>
 			{recordedUrl && !isRecording ? (
 				<div className="flex flex-col gap-2">
 					{/* biome-ignore lint/a11y/useMediaCaption: preview plays the user's just-recorded audio; a transcript is generated after upload. */}
@@ -646,8 +733,9 @@ function RecordingPanel(props: RecordingPanelProps): React.ReactElement {
 				</FieldError>
 			) : null}
 			<FieldDescription>
-				Recordings are stored as WebM or OGG up to 25 MiB. Prefer a file? Switch
-				to Upload instead.
+				Recordings are stored as WebM or OGG up to 25 MiB. Opus at 32kbps fits
+				about 1.8hr (14.4MB/hr); Chrome defaults (50-128kbps) cap at about
+				27-60min. Prefer a file? Switch to Upload instead.
 			</FieldDescription>
 			{fileName && isRecordedFile ? (
 				<FieldDescription>
@@ -763,9 +851,11 @@ function NewMeeting(): React.ReactElement {
 	);
 
 	const {
+		capReached,
 		discardRecording,
 		isRecording,
 		pendingRecording,
+		recordedBytes,
 		recordedUrl,
 		recordError,
 		recordingSeconds,
@@ -905,7 +995,10 @@ function NewMeeting(): React.ReactElement {
 				className="flex flex-col gap-4"
 			>
 				<div className="flex flex-wrap items-center justify-between gap-3">
-					<h1 className="font-semibold text-xl" id="new-meeting-title">
+					<h1
+						className="font-heading font-semibold text-xl"
+						id="new-meeting-title"
+					>
 						New meeting
 					</h1>
 					<Button render={<Link to="/" />} variant="link">
@@ -940,6 +1033,7 @@ function NewMeeting(): React.ReactElement {
 
 								{audioSourceTab === "record" ? (
 									<RecordingPanel
+										capReached={capReached}
 										disabled={isSubmitting}
 										durationSeconds={durationSeconds}
 										fieldError={fieldError}
@@ -951,6 +1045,7 @@ function NewMeeting(): React.ReactElement {
 										onRecordStop={stopRecording}
 										onUseRecording={handleUseRecording}
 										recordError={recordError}
+										recordedBytes={recordedBytes}
 										recordedUrl={recordedUrl}
 										recordingSeconds={recordingSeconds}
 									/>
