@@ -73,6 +73,11 @@ import {
 	TabsTab,
 } from "@notetaker-app/ui/components/tabs";
 import { Textarea } from "@notetaker-app/ui/components/textarea";
+import {
+	keepPreviousData,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
 	ChevronLeftIcon,
@@ -86,8 +91,9 @@ import {
 	SearchXIcon,
 	Trash2Icon,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { MeetingMarkdown } from "@/components/markdown";
+import { MeetingAudioPlayer } from "@/components/meeting-audio-player";
 import {
 	type ActionItem,
 	audioUrlFor,
@@ -108,11 +114,8 @@ export const Route = createFileRoute("/meetings/$meetingId")({
 	component: MeetingDetail,
 });
 
-type DetailState =
-	| { status: "loading" }
-	| { status: "not-found" }
-	| { status: "error"; message: string }
-	| { status: "ready"; meeting: PublicMeeting };
+const MEETING_STALE_TIME = 30 * 1000;
+const MEETING_GC_TIME = 5 * 60 * 1000;
 
 const PROCESSING_STATUSES: ReadonlySet<PublicMeeting["status"]> = new Set([
 	"draft",
@@ -839,34 +842,46 @@ function ActionItemsList({
 	}
 	return (
 		<ul className="flex min-w-0 list-none flex-col gap-2 p-0">
-			{items.map((item) => (
-				<li className="min-w-0" key={item.id}>
-					<label className="flex min-w-0 cursor-pointer items-start gap-2.5 text-sm">
-						<Checkbox
-							checked={item.completed}
-							className="mt-0.5"
-							disabled={disabled || togglingId === item.id}
-							onCheckedChange={(checked: boolean | "indeterminate"): void => {
-								onToggle(item.id, checked === true);
-							}}
-						/>
-						<span className="flex min-w-0 flex-col gap-0.5 break-words">
-							<span
-								className={
-									item.completed ? "text-muted-foreground line-through" : ""
-								}
-							>
-								{item.text}
+			{items.map((item) => {
+				const isPending = togglingId === item.id;
+				return (
+					<li className="min-w-0" key={item.id}>
+						<label className="flex min-w-0 cursor-pointer items-start gap-2.5 text-sm">
+							<span className="relative mt-0.5 inline-flex shrink-0">
+								<Checkbox
+									checked={item.completed}
+									disabled={disabled}
+									onCheckedChange={(
+										checked: boolean | "indeterminate"
+									): void => {
+										onToggle(item.id, checked === true);
+									}}
+								/>
+								{isPending ? (
+									<span
+										aria-hidden="true"
+										className="absolute -top-1 -right-1 size-2 animate-pulse rounded-full bg-amber-500"
+									/>
+								) : null}
 							</span>
-							{item.owner ? (
-								<span className="break-words text-foreground text-sm">
-									Owner: {item.owner}
+							<span className="flex min-w-0 flex-col gap-0.5 break-words">
+								<span
+									className={
+										item.completed ? "text-muted-foreground line-through" : ""
+									}
+								>
+									{item.text}
 								</span>
-							) : null}
-						</span>
-					</label>
-				</li>
-			))}
+								{item.owner ? (
+									<span className="break-words text-foreground text-sm">
+										Owner: {item.owner}
+									</span>
+								) : null}
+							</span>
+						</label>
+					</li>
+				);
+			})}
 		</ul>
 	);
 }
@@ -980,54 +995,28 @@ function TranscriptSegmentsList({
 
 function MeetingDetail(): React.ReactElement {
 	const { meetingId } = Route.useParams();
-	const [state, setState] = useState<DetailState>({ status: "loading" });
+	const queryClient = useQueryClient();
+	const meetingQuery = useQuery({
+		gcTime: MEETING_GC_TIME,
+		placeholderData: keepPreviousData,
+		queryFn: ({ signal }: { signal: AbortSignal }) =>
+			fetchMeeting(meetingId, signal),
+		queryKey: ["meeting", meetingId],
+		refetchOnWindowFocus: true,
+		retry: (failureCount: number, error: unknown) =>
+			!isNotFoundError(error) && failureCount < 1,
+		staleTime: MEETING_STALE_TIME,
+	});
 	const [retryStage, setRetryStage] = useState<RetryStage>("idle");
 	const [retryError, setRetryError] = useState<string | null>(null);
 	const [togglingId, setTogglingId] = useState<string | null>(null);
 	const [actionError, setActionError] = useState<string | null>(null);
 
-	const load = useCallback(
-		(signal?: AbortSignal) => {
-			setState({ status: "loading" });
-			fetchMeeting(meetingId, signal)
-				.then((loaded) => {
-					if (!signal?.aborted) {
-						setState({ status: "ready", meeting: loaded });
-					}
-				})
-				.catch((error: unknown) => {
-					if (signal?.aborted) {
-						return;
-					}
-					if (isNotFoundError(error)) {
-						setState({ status: "not-found" });
-						return;
-					}
-					setState({
-						status: "error",
-						message:
-							error instanceof Error
-								? error.message
-								: "Could not load this meeting. Please try again.",
-					});
-				});
-		},
-		[meetingId]
-	);
-
-	useEffect(() => {
-		const controller = new AbortController();
-		load(controller.signal);
-		return () => {
-			controller.abort();
-		};
-	}, [load]);
-
 	const handleRetry = useCallback(() => {
 		setRetryError(null);
 		setRetryStage("idle");
-		load();
-	}, [load]);
+		meetingQuery.refetch().catch(() => undefined);
+	}, [meetingQuery]);
 
 	const handleRetryTranscription = useCallback(async (): Promise<void> => {
 		setRetryStage("transcribing");
@@ -1035,7 +1024,7 @@ function MeetingDetail(): React.ReactElement {
 		try {
 			const updated = await requestTranscription(meetingId);
 			setRetryStage("idle");
-			setState({ status: "ready", meeting: updated });
+			queryClient.setQueryData(["meeting", meetingId], updated);
 		} catch (error: unknown) {
 			setRetryStage("idle");
 			setRetryError(
@@ -1044,7 +1033,7 @@ function MeetingDetail(): React.ReactElement {
 					: "Transcription retry failed. Please try again."
 			);
 		}
-	}, [meetingId]);
+	}, [meetingId, queryClient]);
 
 	const handleRetrySummary = useCallback(async (): Promise<void> => {
 		setRetryStage("summarizing");
@@ -1052,7 +1041,7 @@ function MeetingDetail(): React.ReactElement {
 		try {
 			const updated = await requestSummary(meetingId);
 			setRetryStage("idle");
-			setState({ status: "ready", meeting: updated });
+			queryClient.setQueryData(["meeting", meetingId], updated);
 		} catch (error: unknown) {
 			setRetryStage("idle");
 			setRetryError(
@@ -1061,7 +1050,7 @@ function MeetingDetail(): React.ReactElement {
 					: "Summary retry failed. Please try again."
 			);
 		}
-	}, [meetingId]);
+	}, [meetingId, queryClient]);
 
 	const handleRetryTranscriptionClick = useCallback((): void => {
 		handleRetryTranscription().catch(() => undefined);
@@ -1071,35 +1060,59 @@ function MeetingDetail(): React.ReactElement {
 		handleRetrySummary().catch(() => undefined);
 	}, [handleRetrySummary]);
 
-	const handleMeetingUpdated = useCallback((updated: PublicMeeting): void => {
-		setState({ status: "ready", meeting: updated });
+	const handleMeetingUpdated = useCallback(
+		(updated: PublicMeeting): void => {
+			queryClient.setQueryData(["meeting", meetingId], updated);
+		},
+		[meetingId, queryClient]
+	);
+
+	const tabsBarRef = useRef<HTMLDivElement>(null);
+	const handleTabsValueChange = useCallback((_value: string): void => {
+		const prefersReducedMotion =
+			typeof window !== "undefined" &&
+			typeof window.matchMedia === "function" &&
+			window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+		tabsBarRef.current?.scrollIntoView({
+			behavior: prefersReducedMotion ? "auto" : "smooth",
+			block: "start",
+		});
 	}, []);
 
 	const handleToggleActionItem = useCallback(
 		(id: string, completed: boolean): void => {
-			if (state.status !== "ready") {
+			if (togglingId !== null) {
 				return;
 			}
-			const previous = state.meeting.actionItems;
+			const current = queryClient.getQueryData<PublicMeeting>([
+				"meeting",
+				meetingId,
+			]);
+			const fallback = meetingQuery.data;
+			const base = current ?? fallback;
+			if (!base) {
+				return;
+			}
+			const previous = base.actionItems;
 			const next = previous.map((item) =>
 				item.id === id ? { ...item, completed } : item
 			);
-			setState({
-				status: "ready",
-				meeting: { ...state.meeting, actionItems: next },
+			queryClient.setQueryData(["meeting", meetingId], {
+				...base,
+				actionItems: next,
 			});
 			setTogglingId(id);
 			setActionError(null);
 			updateMeeting(meetingId, { actionItems: next })
 				.then((updated) => {
 					setTogglingId(null);
-					setState({ status: "ready", meeting: updated });
+					queryClient.setQueryData(["meeting", meetingId], updated);
 				})
 				.catch((error: unknown) => {
 					setTogglingId(null);
-					setState({
-						status: "ready",
-						meeting: { ...state.meeting, actionItems: previous },
+					queryClient.setQueryData(["meeting", meetingId], {
+						...base,
+						actionItems: previous,
 					});
 					setActionError(
 						error instanceof Error
@@ -1108,10 +1121,19 @@ function MeetingDetail(): React.ReactElement {
 					);
 				});
 		},
-		[meetingId, state]
+		[meetingId, meetingQuery.data, queryClient, togglingId]
 	);
 
-	if (state.status === "loading") {
+	const meeting = meetingQuery.data ?? null;
+	const isFirstLoad = meetingQuery.isPending && meeting === null;
+	const queryError = meetingQuery.isError ? meetingQuery.error : null;
+	const isNotFound = queryError !== null && isNotFoundError(queryError);
+	const loadErrorMessage =
+		queryError instanceof Error
+			? queryError.message
+			: "Could not load this meeting. Please try again.";
+
+	if (isFirstLoad) {
 		return (
 			<main className="container mx-auto w-full min-w-0 max-w-3xl overflow-x-clip px-4 py-6">
 				<div
@@ -1134,7 +1156,7 @@ function MeetingDetail(): React.ReactElement {
 		);
 	}
 
-	if (state.status === "not-found") {
+	if (isNotFound) {
 		return (
 			<main className="container mx-auto w-full min-w-0 max-w-3xl overflow-x-clip px-4 py-6">
 				<Empty>
@@ -1167,13 +1189,13 @@ function MeetingDetail(): React.ReactElement {
 		);
 	}
 
-	if (state.status === "error") {
+	if (queryError !== null) {
 		return (
 			<main className="container mx-auto w-full min-w-0 max-w-3xl overflow-x-clip px-4 py-6">
 				<Alert variant="error">
 					<CircleAlertIcon />
 					<AlertTitle>Could not load this meeting</AlertTitle>
-					<AlertDescription>{state.message}</AlertDescription>
+					<AlertDescription>{loadErrorMessage}</AlertDescription>
 					<AlertAction>
 						<div className="flex gap-2">
 							<Button
@@ -1195,7 +1217,33 @@ function MeetingDetail(): React.ReactElement {
 		);
 	}
 
-	const { meeting } = state;
+	if (meeting === null) {
+		return (
+			<main className="container mx-auto w-full min-w-0 max-w-3xl overflow-x-clip px-4 py-6">
+				<Alert variant="error">
+					<CircleAlertIcon />
+					<AlertTitle>Could not load this meeting</AlertTitle>
+					<AlertDescription>{loadErrorMessage}</AlertDescription>
+					<AlertAction>
+						<div className="flex gap-2">
+							<Button
+								onClick={handleRetry}
+								size="sm"
+								type="button"
+								variant="outline"
+							>
+								Retry
+							</Button>
+							<Button render={<Link to="/" />} size="sm" variant="link">
+								<ChevronLeftIcon aria-hidden="true" />
+								Back Home
+							</Button>
+						</div>
+					</AlertAction>
+				</Alert>
+			</main>
+		);
+	}
 
 	if (meeting.status === "failed") {
 		return (
@@ -1281,46 +1329,53 @@ function MeetingDetail(): React.ReactElement {
 						>
 							Audio
 						</h2>
-						{/* biome-ignore lint/a11y/useMediaCaption: the transcript section below is the text alternative for this recording. */}
-						<audio
-							className="w-full max-w-full"
-							controls
-							preload="metadata"
-							src={audioUrl}
-						>
-							Your browser does not support audio playback.
-						</audio>
+						<MeetingAudioPlayer src={audioUrl} />
 					</section>
 				) : null}
 
 				<Separator className="my-4" />
 
-				<Tabs className="min-w-0" defaultValue="transcript">
-					<div className="-mx-4 min-w-0 scroll-px-4 overflow-x-auto border-b px-4 py-0.5 [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]">
-						<TabsList
-							className="w-fit min-w-full"
-							size="sm"
-							variant="underline"
-						>
-							<TabsTab value="transcript">
-								<FileTextIcon aria-hidden="true" className="max-sm:hidden" />
-								Transcript
-							</TabsTab>
-							<TabsTab value="summary">
-								<ScrollTextIcon aria-hidden="true" className="max-sm:hidden" />
-								Summary
-							</TabsTab>
-							<TabsTab value="takeaways">
-								<ListChecksIcon aria-hidden="true" className="max-sm:hidden" />
-								Takeaways
-								<Badge variant="outline">{meeting.takeaways.length}</Badge>
-							</TabsTab>
-							<TabsTab value="actions">
-								<ListTodoIcon aria-hidden="true" className="max-sm:hidden" />
-								Actions
-								<Badge variant="outline">{meeting.actionItems.length}</Badge>
-							</TabsTab>
-						</TabsList>
+				<Tabs
+					className="min-w-0 scroll-mt-2"
+					defaultValue="transcript"
+					onValueChange={handleTabsValueChange}
+				>
+					<div
+						className="sticky top-0 z-10 -mx-4 min-w-0 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+						ref={tabsBarRef}
+					>
+						<div className="min-w-0 scroll-px-4 overflow-x-auto py-0.5 [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]">
+							<TabsList
+								className="w-fit min-w-full"
+								size="sm"
+								variant="underline"
+							>
+								<TabsTab value="transcript">
+									<FileTextIcon aria-hidden="true" className="max-sm:hidden" />
+									Transcript
+								</TabsTab>
+								<TabsTab value="summary">
+									<ScrollTextIcon
+										aria-hidden="true"
+										className="max-sm:hidden"
+									/>
+									Summary
+								</TabsTab>
+								<TabsTab value="takeaways">
+									<ListChecksIcon
+										aria-hidden="true"
+										className="max-sm:hidden"
+									/>
+									Takeaways
+									<Badge variant="outline">{meeting.takeaways.length}</Badge>
+								</TabsTab>
+								<TabsTab value="actions">
+									<ListTodoIcon aria-hidden="true" className="max-sm:hidden" />
+									Actions
+									<Badge variant="outline">{meeting.actionItems.length}</Badge>
+								</TabsTab>
+							</TabsList>
+						</div>
 					</div>
 					<TabsPanel className="min-w-0" value="transcript">
 						<section
@@ -1468,11 +1523,7 @@ function MeetingDetail(): React.ReactElement {
 									<CardPanel className="min-w-0 p-4 sm:p-6">
 										<div className="flex min-w-0 flex-col gap-3">
 											{togglingId ? (
-												<p
-													aria-live="polite"
-													className="text-foreground text-sm"
-													role="status"
-												>
+												<p aria-live="polite" className="sr-only" role="status">
 													Saving change…
 												</p>
 											) : null}

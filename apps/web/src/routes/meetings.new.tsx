@@ -14,6 +14,14 @@ import {
 	CardPanel,
 } from "@notetaker-app/ui/components/card";
 import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@notetaker-app/ui/components/empty";
+import {
 	Field,
 	FieldDescription,
 	FieldError,
@@ -34,6 +42,7 @@ import {
 } from "@notetaker-app/ui/components/tooltip";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
+	AudioLinesIcon,
 	CheckIcon,
 	ChevronLeftIcon,
 	CircleAlertIcon,
@@ -44,6 +53,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { MeetingAudioPreview } from "@/components/meeting-audio-player";
 import {
 	createMeeting,
 	type MeetingSource,
@@ -549,47 +559,61 @@ interface UploadPanelProps {
 function UploadPanel(props: UploadPanelProps): React.ReactElement {
 	const { disabled, durationSeconds, fieldError, fileName, onFileChange } =
 		props;
-	const describedBy = fieldError ? "audio-file-error" : undefined;
+	const describedBy = fieldError
+		? "audio-file-error audio-file-description"
+		: "audio-file-description";
 	return (
-		<Field invalid={!!fieldError}>
-			<div className="flex items-center gap-1.5">
-				<FieldLabel htmlFor="audio-file">Audio file</FieldLabel>
-				<Tooltip>
-					<TooltipTrigger
-						aria-label="Audio file size limit"
-						className="inline-flex items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-						render={<button type="button" />}
-					>
-						<InfoIcon aria-hidden="true" className="size-3.5" />
-					</TooltipTrigger>
-					<TooltipContent>25 MiB max</TooltipContent>
-				</Tooltip>
-			</div>
-			<Input
-				accept={ACCEPT_VALUE}
-				aria-describedby={describedBy}
-				aria-invalid={fieldError ? true : undefined}
-				disabled={disabled}
-				id="audio-file"
-				onChange={onFileChange}
-				type="file"
-			/>
-			{fieldError ? (
-				<FieldError id="audio-file-error" match={true}>
-					{fieldError}
-				</FieldError>
-			) : null}
-			<FieldDescription>
-				Upload an MP3, WAV, M4A, OGG, OPUS, FLAC, AAC, or WebM file up to 25
-				MiB.
-			</FieldDescription>
-			{fileName ? (
-				<FieldDescription>
-					Selected: {fileName}
-					{durationSeconds > 0 ? ` · about ${String(durationSeconds)}s` : null}
-				</FieldDescription>
-			) : null}
-		</Field>
+		<Empty className="gap-4 py-8 md:py-10">
+			<EmptyHeader>
+				<EmptyMedia variant="icon">
+					<AudioLinesIcon aria-hidden="true" />
+				</EmptyMedia>
+				<EmptyTitle>Upload audio</EmptyTitle>
+				<EmptyDescription id="audio-file-description">
+					Upload an MP3, WAV, M4A, OGG, OPUS, FLAC, AAC, or WebM file up to 25
+					MiB.
+				</EmptyDescription>
+			</EmptyHeader>
+			<EmptyContent className="max-w-md">
+				<Field className="w-full" invalid={!!fieldError}>
+					<div className="flex items-center gap-1.5">
+						<FieldLabel htmlFor="audio-file">Audio file</FieldLabel>
+						<Tooltip>
+							<TooltipTrigger
+								aria-label="Audio file size limit"
+								className="inline-flex items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+								render={<button type="button" />}
+							>
+								<InfoIcon aria-hidden="true" className="size-3.5" />
+							</TooltipTrigger>
+							<TooltipContent>25 MiB max</TooltipContent>
+						</Tooltip>
+					</div>
+					<Input
+						accept={ACCEPT_VALUE}
+						aria-describedby={describedBy}
+						aria-invalid={fieldError ? true : undefined}
+						disabled={disabled}
+						id="audio-file"
+						onChange={onFileChange}
+						type="file"
+					/>
+					{fieldError ? (
+						<FieldError id="audio-file-error" match={true}>
+							{fieldError}
+						</FieldError>
+					) : null}
+					{fileName ? (
+						<FieldDescription>
+							Selected: {fileName}
+							{durationSeconds > 0
+								? ` · about ${String(durationSeconds)}s`
+								: null}
+						</FieldDescription>
+					) : null}
+				</Field>
+			</EmptyContent>
+		</Empty>
 	);
 }
 
@@ -707,10 +731,7 @@ function RecordingPanel(props: RecordingPanelProps): React.ReactElement {
 			/>
 			{recordedUrl && !isRecording ? (
 				<div className="flex flex-col gap-2">
-					{/* biome-ignore lint/a11y/useMediaCaption: preview plays the user's just-recorded audio; a transcript is generated after upload. */}
-					<audio controls src={recordedUrl}>
-						Your browser does not support audio preview.
-					</audio>
+					<MeetingAudioPreview src={recordedUrl} />
 					<div className="flex flex-wrap items-center gap-2">
 						<Button onClick={onDiscard} type="button" variant="outline">
 							<Trash2Icon aria-hidden="true" />
