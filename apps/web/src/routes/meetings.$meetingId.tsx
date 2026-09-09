@@ -9,7 +9,9 @@ import { Badge } from "@notetaker-app/ui/components/badge";
 import { Button } from "@notetaker-app/ui/components/button";
 import {
 	Card,
+	CardAction,
 	CardDescription,
+	CardFooter,
 	CardHeader,
 	CardPanel,
 	CardTitle,
@@ -38,7 +40,16 @@ import {
 	TabsTab,
 } from "@notetaker-app/ui/components/tabs";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { CircleAlertIcon, SearchXIcon } from "lucide-react";
+import {
+	ChevronLeftIcon,
+	CircleAlertIcon,
+	FileTextIcon,
+	ListChecksIcon,
+	ListTodoIcon,
+	PlusIcon,
+	ScrollTextIcon,
+	SearchXIcon,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
 	audioUrlFor,
@@ -83,13 +94,16 @@ function MeetingStatusBadge({
 	readonly status: PublicMeeting["status"];
 }): React.ReactElement {
 	let dotClassName = "bg-amber-500";
+	let variant: "outline" | "success" | "error" = "outline";
 	if (status === "completed") {
 		dotClassName = "bg-emerald-500";
+		variant = "success";
 	} else if (status === "failed") {
 		dotClassName = "bg-red-500";
+		variant = "error";
 	}
 	return (
-		<Badge variant="outline">
+		<Badge variant={variant}>
 			<span
 				aria-hidden="true"
 				className={`size-1.5 rounded-full ${dotClassName}`}
@@ -136,23 +150,64 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 		meeting.transcript.trim().length > 0;
 	const isRetrying = retryStage !== "idle";
 	const describedBy = retryError ? "meeting-retry-error" : undefined;
+	let alertRetryButton: React.ReactElement;
+	if (canRetryTranscription) {
+		alertRetryButton = (
+			<Button
+				aria-describedby={describedBy}
+				disabled={isRetrying}
+				loading={retryStage === "transcribing"}
+				onClick={onRetryTranscription}
+				size="xs"
+				variant="outline"
+			>
+				Retry
+			</Button>
+		);
+	} else if (canRetrySummary) {
+		alertRetryButton = (
+			<Button
+				aria-describedby={describedBy}
+				disabled={isRetrying}
+				loading={retryStage === "summarizing"}
+				onClick={onRetrySummary}
+				size="xs"
+				variant="outline"
+			>
+				Retry
+			</Button>
+		);
+	} else {
+		alertRetryButton = (
+			<Button
+				disabled={isRetrying}
+				onClick={onReload}
+				size="xs"
+				variant="outline"
+			>
+				Retry
+			</Button>
+		);
+	}
 	return (
 		<main className="container mx-auto w-full max-w-3xl px-4 py-6">
 			<section aria-labelledby="meeting-title" className="flex flex-col gap-4">
 				<Card>
 					<CardHeader>
 						{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h1 with the meeting title as content. */}
-						<CardTitle render={<h1 />}>{meeting.title}</CardTitle>
+						<CardTitle id="meeting-title" render={<h1 />}>
+							{meeting.title}
+						</CardTitle>
 						<CardDescription>
 							{formatDate(meeting.occurredAt)} ·{" "}
 							{formatDuration(meeting.durationSeconds)}
 						</CardDescription>
-						<p className="mt-1">
+						<CardAction>
 							<MeetingStatusBadge
 								label={`Failed during ${stageLabel}`}
 								status="failed"
 							/>
-						</p>
+						</CardAction>
 					</CardHeader>
 					<CardPanel>
 						<div className="flex flex-col gap-3">
@@ -174,43 +229,49 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 									<CircleAlertIcon />
 									<AlertTitle>Retry failed</AlertTitle>
 									<AlertDescription>{retryError}</AlertDescription>
+									<AlertAction>{alertRetryButton}</AlertAction>
 								</Alert>
 							) : null}
-							<div className="flex flex-wrap gap-2">
-								{canRetryTranscription ? (
-									<Button
-										aria-describedby={describedBy}
-										disabled={isRetrying}
-										loading={retryStage === "transcribing"}
-										onClick={onRetryTranscription}
-									>
-										Retry transcription
-									</Button>
-								) : null}
-								{canRetrySummary ? (
-									<Button
-										aria-describedby={describedBy}
-										disabled={isRetrying}
-										loading={retryStage === "summarizing"}
-										onClick={onRetrySummary}
-									>
-										Retry summary
-									</Button>
-								) : null}
-								<Button
-									disabled={isRetrying}
-									onClick={onReload}
-									variant="outline"
-								>
-									Reload
-								</Button>
-							</div>
 						</div>
 					</CardPanel>
+					<CardFooter className="border-t py-3">
+						<div className="flex flex-wrap gap-2">
+							{canRetryTranscription ? (
+								<Button
+									aria-describedby={describedBy}
+									disabled={isRetrying}
+									loading={retryStage === "transcribing"}
+									onClick={onRetryTranscription}
+								>
+									Retry transcription
+								</Button>
+							) : null}
+							{canRetrySummary ? (
+								<Button
+									aria-describedby={describedBy}
+									disabled={isRetrying}
+									loading={retryStage === "summarizing"}
+									onClick={onRetrySummary}
+								>
+									Retry summary
+								</Button>
+							) : null}
+							<Button
+								disabled={isRetrying}
+								onClick={onReload}
+								variant="outline"
+							>
+								Reload
+							</Button>
+						</div>
+					</CardFooter>
 				</Card>
-				<Button render={<Link to="/" />} variant="outline">
-					Back Home
-				</Button>
+				<div>
+					<Button render={<Link to="/" />} variant="link">
+						<ChevronLeftIcon aria-hidden="true" />
+						Back Home
+					</Button>
+				</div>
 			</section>
 		</main>
 	);
@@ -315,9 +376,14 @@ function MeetingDetail(): React.ReactElement {
 					className="flex flex-col gap-3"
 					role="status"
 				>
-					<Skeleton className="h-8 w-2/3" />
-					<Skeleton className="h-24 w-full" />
-					<Skeleton className="h-40 w-full" />
+					<Card>
+						<CardPanel className="flex flex-col gap-3">
+							<Skeleton className="h-6 w-2/3 rounded-md" />
+							<Skeleton className="h-4 w-1/3 rounded-md" />
+							<Skeleton className="h-24 w-full rounded-xl" />
+							<Skeleton className="h-32 w-full rounded-xl" />
+						</CardPanel>
+					</Card>
 				</div>
 			</main>
 		);
@@ -337,7 +403,19 @@ function MeetingDetail(): React.ReactElement {
 						</EmptyDescription>
 					</EmptyHeader>
 					<EmptyContent>
-						<Button render={<Link to="/" />}>Back Home</Button>
+						<div className="flex gap-2">
+							<Button render={<Link to="/" />} size="sm">
+								Back Home
+							</Button>
+							<Button
+								render={<Link to="/meetings/new" />}
+								size="sm"
+								variant="outline"
+							>
+								<PlusIcon aria-hidden="true" />
+								New meeting
+							</Button>
+						</div>
 					</EmptyContent>
 				</Empty>
 			</main>
@@ -361,7 +439,8 @@ function MeetingDetail(): React.ReactElement {
 							>
 								Retry
 							</Button>
-							<Button render={<Link to="/" />} size="sm" variant="ghost">
+							<Button render={<Link to="/" />} size="sm" variant="link">
+								<ChevronLeftIcon aria-hidden="true" />
 								Back Home
 							</Button>
 						</div>
@@ -397,14 +476,16 @@ function MeetingDetail(): React.ReactElement {
 					<Card>
 						<CardHeader>
 							{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h1 with the meeting title as content. */}
-							<CardTitle render={<h1 />}>{meeting.title}</CardTitle>
+							<CardTitle id="meeting-title" render={<h1 />}>
+								{meeting.title}
+							</CardTitle>
 							<CardDescription>
 								{formatDate(meeting.occurredAt)} ·{" "}
 								{formatDuration(meeting.durationSeconds)}
 							</CardDescription>
-							<p className="mt-1">
+							<CardAction>
 								<MeetingStatusBadge status={meeting.status} />
-							</p>
+							</CardAction>
 						</CardHeader>
 						<CardPanel>
 							<div className="flex flex-col gap-3">
@@ -423,10 +504,18 @@ function MeetingDetail(): React.ReactElement {
 								</p>
 							</div>
 						</CardPanel>
+						<CardFooter className="border-t py-3">
+							<p className="text-muted-foreground text-xs">
+								Processing runs automatically. Reload to check for updates.
+							</p>
+						</CardFooter>
 					</Card>
-					<Button render={<Link to="/" />} variant="outline">
-						Back Home
-					</Button>
+					<div>
+						<Button render={<Link to="/" />} variant="link">
+							<ChevronLeftIcon aria-hidden="true" />
+							Back Home
+						</Button>
+					</div>
 				</section>
 			</main>
 		);
@@ -440,15 +529,22 @@ function MeetingDetail(): React.ReactElement {
 				<Card>
 					<CardHeader>
 						{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h1 with the meeting title as content. */}
-						<CardTitle render={<h1 />}>{meeting.title}</CardTitle>
+						<CardTitle id="meeting-title" render={<h1 />}>
+							{meeting.title}
+						</CardTitle>
 						<CardDescription>
 							{formatDate(meeting.occurredAt)} ·{" "}
 							{formatDuration(meeting.durationSeconds)}
 						</CardDescription>
-						<p className="mt-1">
+						<CardAction>
 							<MeetingStatusBadge status={meeting.status} />
-						</p>
+						</CardAction>
 					</CardHeader>
+					<CardFooter className="border-t py-3">
+						<p className="text-muted-foreground text-xs">
+							Audio, transcript, and notes are kept together on this page.
+						</p>
+					</CardFooter>
 				</Card>
 
 				{meeting.description ? (
@@ -480,9 +576,16 @@ function MeetingDetail(): React.ReactElement {
 				<Tabs defaultValue="transcript">
 					<div className="border-b">
 						<TabsList variant="underline">
-							<TabsTab value="transcript">Transcript</TabsTab>
-							<TabsTab value="summary">Summary</TabsTab>
+							<TabsTab value="transcript">
+								<FileTextIcon aria-hidden="true" />
+								Transcript
+							</TabsTab>
+							<TabsTab value="summary">
+								<ScrollTextIcon aria-hidden="true" />
+								Summary
+							</TabsTab>
 							<TabsTab value="takeaways">
+								<ListChecksIcon aria-hidden="true" />
 								Takeaways
 								<Badge
 									className="not-in-data-active:text-muted-foreground"
@@ -492,6 +595,7 @@ function MeetingDetail(): React.ReactElement {
 								</Badge>
 							</TabsTab>
 							<TabsTab value="actions">
+								<ListTodoIcon aria-hidden="true" />
 								Actions
 								<Badge
 									className="not-in-data-active:text-muted-foreground"
@@ -507,28 +611,60 @@ function MeetingDetail(): React.ReactElement {
 							aria-labelledby="meeting-transcript-heading"
 							className="pt-2"
 						>
-							<h2
-								className="mb-1 font-medium text-sm"
-								id="meeting-transcript-heading"
-							>
-								Transcript
-							</h2>
-							<p className="whitespace-pre-wrap text-sm leading-relaxed">
-								{meeting.transcript ?? "No transcript is available yet."}
-							</p>
+							<Card>
+								<CardHeader>
+									{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h2 with the transcript title as content. */}
+									<CardTitle id="meeting-transcript-heading" render={<h2 />}>
+										Transcript
+									</CardTitle>
+								</CardHeader>
+								<CardPanel>
+									<p className="whitespace-pre-wrap text-sm leading-relaxed">
+										{meeting.transcript ?? "No transcript is available yet."}
+									</p>
+								</CardPanel>
+								<CardFooter className="border-t py-3">
+									<div className="flex gap-1 text-muted-foreground text-xs">
+										<CircleAlertIcon
+											aria-hidden="true"
+											className="size-3 h-lh shrink-0"
+										/>
+										<p>
+											The audio recording above is the source of truth for this
+											transcript.
+										</p>
+									</div>
+								</CardFooter>
+							</Card>
 						</section>
 					</TabsPanel>
 					<TabsPanel value="summary">
 						<section aria-labelledby="meeting-summary-heading" className="pt-2">
-							<h2
-								className="mb-1 font-medium text-sm"
-								id="meeting-summary-heading"
-							>
-								Summary
-							</h2>
-							<p className="whitespace-pre-wrap text-sm leading-relaxed">
-								{meeting.summary ?? "No summary is available yet."}
-							</p>
+							<Card>
+								<CardHeader>
+									{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h2 with the summary title as content. */}
+									<CardTitle id="meeting-summary-heading" render={<h2 />}>
+										Summary
+									</CardTitle>
+								</CardHeader>
+								<CardPanel>
+									<p className="whitespace-pre-wrap text-sm leading-relaxed">
+										{meeting.summary ?? "No summary is available yet."}
+									</p>
+								</CardPanel>
+								<CardFooter className="border-t py-3">
+									<div className="flex gap-1 text-muted-foreground text-xs">
+										<CircleAlertIcon
+											aria-hidden="true"
+											className="size-3 h-lh shrink-0"
+										/>
+										<p>
+											Generated from the transcript. Verify key details against
+											the audio.
+										</p>
+									</div>
+								</CardFooter>
+							</Card>
 						</section>
 					</TabsPanel>
 					<TabsPanel value="takeaways">
@@ -536,55 +672,90 @@ function MeetingDetail(): React.ReactElement {
 							aria-labelledby="meeting-takeaways-heading"
 							className="pt-2"
 						>
-							<h2
-								className="mb-1 font-medium text-sm"
-								id="meeting-takeaways-heading"
-							>
-								Key takeaways
-							</h2>
-							{meeting.takeaways.length > 0 ? (
-								<ul className="list-disc space-y-1 pl-5 text-sm">
-									{meeting.takeaways.map((takeaway, index) => (
-										<li key={`${String(index)}-${takeaway}`}>{takeaway}</li>
-									))}
-								</ul>
-							) : (
-								<p className="text-muted-foreground text-sm">
-									No takeaways were recorded.
-								</p>
-							)}
+							<Card>
+								<CardHeader>
+									{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h2 with the takeaways title as content. */}
+									<CardTitle id="meeting-takeaways-heading" render={<h2 />}>
+										Key takeaways
+									</CardTitle>
+									<CardAction>
+										<Badge variant="outline">{meeting.takeaways.length}</Badge>
+									</CardAction>
+								</CardHeader>
+								<CardPanel>
+									{meeting.takeaways.length > 0 ? (
+										<ul className="list-disc space-y-1 pl-5 text-sm">
+											{meeting.takeaways.map((takeaway, index) => (
+												<li key={`${String(index)}-${takeaway}`}>{takeaway}</li>
+											))}
+										</ul>
+									) : (
+										<p className="text-muted-foreground text-sm">
+											No takeaways were recorded.
+										</p>
+									)}
+								</CardPanel>
+								<CardFooter className="border-t py-3">
+									<div className="flex gap-1 text-muted-foreground text-xs">
+										<CircleAlertIcon
+											aria-hidden="true"
+											className="size-3 h-lh shrink-0"
+										/>
+										<p>Review each takeaway before sharing.</p>
+									</div>
+								</CardFooter>
+							</Card>
 						</section>
 					</TabsPanel>
 					<TabsPanel value="actions">
 						<section aria-labelledby="meeting-actions-heading" className="pt-2">
-							<h2
-								className="mb-1 font-medium text-sm"
-								id="meeting-actions-heading"
-							>
-								Action items
-							</h2>
-							{meeting.actionItems.length > 0 ? (
-								<ul className="list-disc space-y-1 pl-5 text-sm">
-									{meeting.actionItems.map((item, index) => (
-										<li
-											key={`${String(index)}-${item.owner ?? "unassigned"}-${item.text}`}
-										>
-											{item.text}
-											{item.owner ? ` (owner: ${item.owner})` : null}
-										</li>
-									))}
-								</ul>
-							) : (
-								<p className="text-muted-foreground text-sm">
-									No action items were recorded.
-								</p>
-							)}
+							<Card>
+								<CardHeader>
+									{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h2 with the action items title as content. */}
+									<CardTitle id="meeting-actions-heading" render={<h2 />}>
+										Action items
+									</CardTitle>
+									<CardAction>
+										<Badge variant="outline">
+											{meeting.actionItems.length}
+										</Badge>
+									</CardAction>
+								</CardHeader>
+								<CardPanel>
+									{meeting.actionItems.length > 0 ? (
+										<ul className="list-disc space-y-1 pl-5 text-sm">
+											{meeting.actionItems.map((item, index) => (
+												<li
+													key={`${String(index)}-${item.owner ?? "unassigned"}-${item.text}`}
+												>
+													{item.text}
+													{item.owner ? ` (owner: ${item.owner})` : null}
+												</li>
+											))}
+										</ul>
+									) : (
+										<p className="text-muted-foreground text-sm">
+											No action items were recorded.
+										</p>
+									)}
+								</CardPanel>
+								<CardFooter className="border-t py-3">
+									<div className="flex gap-1 text-muted-foreground text-xs">
+										<CircleAlertIcon
+											aria-hidden="true"
+											className="size-3 h-lh shrink-0"
+										/>
+										<p>Assign an owner before marking an item complete.</p>
+									</div>
+								</CardFooter>
+							</Card>
 						</section>
 					</TabsPanel>
 				</Tabs>
 
 				<div>
-					<Button render={<Link to="/" />} variant="outline">
+					<Button render={<Link to="/" />} variant="link">
+						<ChevronLeftIcon aria-hidden="true" />
 						Back Home
 					</Button>
 				</div>

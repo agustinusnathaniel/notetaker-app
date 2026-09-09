@@ -7,6 +7,7 @@ import { Button } from "@notetaker-app/ui/components/button";
 import {
 	Card,
 	CardDescription,
+	CardFooter,
 	CardHeader,
 	CardPanel,
 	CardTitle,
@@ -25,8 +26,13 @@ import {
 	ProgressTrack,
 	ProgressValue,
 } from "@notetaker-app/ui/components/progress";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@notetaker-app/ui/components/tooltip";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { CircleAlertIcon } from "lucide-react";
+import { ChevronLeftIcon, CircleAlertIcon, InfoIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -298,7 +304,8 @@ function NewMeeting(): React.ReactElement {
 					<h1 className="font-semibold text-xl" id="new-meeting-title">
 						New meeting
 					</h1>
-					<Button render={<Link to="/" />} variant="ghost">
+					<Button render={<Link to="/" />} variant="link">
+						<ChevronLeftIcon aria-hidden="true" />
 						Back Home
 					</Button>
 				</div>
@@ -314,9 +321,25 @@ function NewMeeting(): React.ReactElement {
 						</CardDescription>
 					</CardHeader>
 					<CardPanel>
-						<form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+						<form
+							className="flex flex-col gap-4"
+							id="audio-upload-form"
+							onSubmit={handleSubmit}
+						>
 							<Field invalid={!!fieldError}>
-								<FieldLabel htmlFor="audio-file">Audio file</FieldLabel>
+								<div className="flex items-center gap-1.5">
+									<FieldLabel htmlFor="audio-file">Audio file</FieldLabel>
+									<Tooltip>
+										<TooltipTrigger
+											aria-label="Audio file size limit"
+											className="inline-flex items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+											render={<button type="button" />}
+										>
+											<InfoIcon aria-hidden="true" className="size-3.5" />
+										</TooltipTrigger>
+										<TooltipContent>25 MiB max</TooltipContent>
+									</Tooltip>
+								</div>
 								<Input
 									accept={ACCEPT_VALUE}
 									aria-describedby={describedBy}
@@ -364,20 +387,25 @@ function NewMeeting(): React.ReactElement {
 									<AlertDescription>{failure}</AlertDescription>
 								</Alert>
 							) : null}
-
-							<div className="flex flex-wrap gap-2">
-								<Button
-									disabled={isSubmitting}
-									loading={isSubmitting}
-									type="submit"
-								>
-									{stage === "failed"
-										? "Retry upload"
-										: "Upload and generate notes"}
-								</Button>
-							</div>
 						</form>
 					</CardPanel>
+					<CardFooter className="border-t py-3">
+						<div className="inline-flex items-center gap-2">
+							<Button render={<Link to="/" />} variant="ghost">
+								Cancel
+							</Button>
+							<Button
+								disabled={isSubmitting}
+								form="audio-upload-form"
+								loading={isSubmitting}
+								type="submit"
+							>
+								{stage === "failed"
+									? "Retry upload"
+									: "Upload and generate notes"}
+							</Button>
+						</div>
+					</CardFooter>
 				</Card>
 			</section>
 		</main>
