@@ -90,7 +90,7 @@ If you want to add app-specific blocks instead of shared primitives, run the sha
 
 The meetings flow is the local golden path: upload audio at `/meetings/new`, then review transcript, summary, takeaways, and action items at `/meetings/$meetingId`.
 
-1. Configure `apps/server/.env` with Neon pooled `DATABASE_URL` plus `DATABASE_MIGRATION_URL`, R2 bucket settings, `DEEPGRAM_API_KEY`, and optional `GROQ_API_KEY` fallback for summaries. Configure `apps/web/.env` with `VITE_SERVER_URL=http://localhost:3000`.
+1. Configure `apps/server/.env` with Neon pooled `DATABASE_URL` plus `DATABASE_MIGRATION_URL`, R2 bucket settings, `DEEPGRAM_API_KEY`, and optional `GROQ_API_KEY` for the summary fallback (uses `openai/gpt-oss-120b`; summaries still work without it when Workers AI is available). Configure `apps/web/.env` with `VITE_SERVER_URL=http://localhost:3000`.
 2. Apply migrations from the repo root:
 
 ```bash

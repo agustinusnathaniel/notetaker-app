@@ -296,7 +296,7 @@ function MeetingDetail(): React.ReactElement {
 						{state.message}
 					</p>
 					<div className="flex gap-2">
-						<Button onClick={handleRetry} variant="outline">
+						<Button onClick={handleRetry} type="button" variant="outline">
 							Retry
 						</Button>
 						<Button render={<Link to="/" />} variant="ghost">
@@ -434,8 +434,8 @@ function MeetingDetail(): React.ReactElement {
 					</h2>
 					{meeting.takeaways.length > 0 ? (
 						<ul className="list-disc space-y-1 pl-5 text-sm">
-							{meeting.takeaways.map((takeaway) => (
-								<li key={takeaway}>{takeaway}</li>
+							{meeting.takeaways.map((takeaway, index) => (
+								<li key={`${String(index)}-${takeaway}`}>{takeaway}</li>
 							))}
 						</ul>
 					) : (
@@ -451,8 +451,10 @@ function MeetingDetail(): React.ReactElement {
 					</h2>
 					{meeting.actionItems.length > 0 ? (
 						<ul className="list-disc space-y-1 pl-5 text-sm">
-							{meeting.actionItems.map((item) => (
-								<li key={`${item.owner ?? "unassigned"}-${item.text}`}>
+							{meeting.actionItems.map((item, index) => (
+								<li
+									key={`${String(index)}-${item.owner ?? "unassigned"}-${item.text}`}
+								>
 									{item.text}
 									{item.owner ? ` (owner: ${item.owner})` : null}
 								</li>

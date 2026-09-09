@@ -641,7 +641,7 @@ function canSummarize(
 const WORKERS_AI_SUMMARY_MODEL =
 	"@cf/meta/llama-3.3-70b-instruct-fp8-fast" as const;
 const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_SUMMARY_MODEL = "llama-3.3-70b-versatile";
+const GROQ_SUMMARY_MODEL = "openai/gpt-oss-120b";
 
 const GroqChatResponseSchema = z.object({
 	choices: z

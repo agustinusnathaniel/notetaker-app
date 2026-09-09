@@ -183,6 +183,7 @@ function NewMeeting(): React.ReactElement {
 			const selected = event.target.files?.[0] ?? null;
 			fileRef.current = selected;
 			setFailure(null);
+			setStage("idle");
 			if (!selected) {
 				setFileName(null);
 				setDurationSeconds(0);
@@ -344,6 +345,7 @@ function NewMeeting(): React.ReactElement {
 									<Button
 										disabled={isSubmitting}
 										onClick={handleRetry}
+										type="button"
 										variant="outline"
 									>
 										Retry
