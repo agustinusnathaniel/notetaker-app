@@ -1,3 +1,8 @@
+import {
+	Alert,
+	AlertDescription,
+	AlertTitle,
+} from "@notetaker-app/ui/components/alert";
 import { Button } from "@notetaker-app/ui/components/button";
 import {
 	Card,
@@ -6,9 +11,22 @@ import {
 	CardPanel,
 	CardTitle,
 } from "@notetaker-app/ui/components/card";
+import {
+	Field,
+	FieldDescription,
+	FieldError,
+	FieldLabel,
+} from "@notetaker-app/ui/components/field";
 import { Input } from "@notetaker-app/ui/components/input";
-import { Label } from "@notetaker-app/ui/components/label";
+import {
+	Progress,
+	ProgressIndicator,
+	ProgressLabel,
+	ProgressTrack,
+	ProgressValue,
+} from "@notetaker-app/ui/components/progress";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { CircleAlertIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -71,6 +89,15 @@ const STAGE_LABELS: Record<UploadStage, string> = {
 	summarizing: "Summarizing",
 	transcribing: "Transcribing",
 	uploading: "Uploading audio",
+};
+
+const STAGE_PROGRESS: Record<Exclude<UploadStage, "failed">, number> = {
+	completed: 100,
+	creating: 15,
+	idle: 0,
+	summarizing: 90,
+	transcribing: 70,
+	uploading: 40,
 };
 
 function extensionFor(filename: string): string {
@@ -257,12 +284,9 @@ function NewMeeting(): React.ReactElement {
 		[runUpload]
 	);
 
-	const handleRetry = useCallback((): void => {
-		runUpload().catch(() => undefined);
-	}, [runUpload]);
-
 	const isSubmitting = isSubmittingStage(stage);
 	const describedBy = fieldError ? "audio-file-error" : undefined;
+	const progressValue = stage === "failed" ? undefined : STAGE_PROGRESS[stage];
 
 	return (
 		<main className="container mx-auto w-full max-w-3xl px-4 py-6">
@@ -291,8 +315,8 @@ function NewMeeting(): React.ReactElement {
 					</CardHeader>
 					<CardPanel>
 						<form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-							<div className="flex flex-col gap-2">
-								<Label htmlFor="audio-file">Audio file</Label>
+							<Field>
+								<FieldLabel htmlFor="audio-file">Audio file</FieldLabel>
 								<Input
 									accept={ACCEPT_VALUE}
 									aria-describedby={describedBy}
@@ -303,32 +327,40 @@ function NewMeeting(): React.ReactElement {
 									type="file"
 								/>
 								{fieldError ? (
-									<p
-										className="text-destructive text-sm"
-										id="audio-file-error"
-										role="alert"
-									>
-										{fieldError}
-									</p>
+									<FieldError id="audio-file-error">{fieldError}</FieldError>
 								) : null}
+								<FieldDescription>
+									Upload an MP3, WAV, M4A, OGG, OPUS, FLAC, AAC, or WebM file up
+									to 25 MiB.
+								</FieldDescription>
 								{fileName ? (
-									<p className="text-muted-foreground text-sm">
+									<FieldDescription>
 										Selected: {fileName}
 										{durationSeconds > 0
 											? ` · about ${String(durationSeconds)}s`
 											: null}
-									</p>
+									</FieldDescription>
 								) : null}
-							</div>
+							</Field>
 
-							<p aria-live="polite" className="text-sm" role="status">
-								Status: {STAGE_LABELS[stage]}
-							</p>
+							{progressValue === undefined ? null : (
+								<Progress value={progressValue}>
+									<div className="flex items-center justify-between gap-2">
+										<ProgressLabel>Status: {STAGE_LABELS[stage]}</ProgressLabel>
+										<ProgressValue />
+									</div>
+									<ProgressTrack>
+										<ProgressIndicator />
+									</ProgressTrack>
+								</Progress>
+							)}
 
 							{failure ? (
-								<p className="text-destructive text-sm" role="alert">
-									{failure}
-								</p>
+								<Alert variant="error">
+									<CircleAlertIcon />
+									<AlertTitle>Upload failed</AlertTitle>
+									<AlertDescription>{failure}</AlertDescription>
+								</Alert>
 							) : null}
 
 							<div className="flex flex-wrap gap-2">
@@ -341,16 +373,6 @@ function NewMeeting(): React.ReactElement {
 										? "Retry upload"
 										: "Upload and generate notes"}
 								</Button>
-								{stage === "failed" ? (
-									<Button
-										disabled={isSubmitting}
-										onClick={handleRetry}
-										type="button"
-										variant="outline"
-									>
-										Retry
-									</Button>
-								) : null}
 							</div>
 						</form>
 					</CardPanel>

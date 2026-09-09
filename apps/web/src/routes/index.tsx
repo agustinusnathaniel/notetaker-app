@@ -1,3 +1,10 @@
+import {
+	Alert,
+	AlertAction,
+	AlertDescription,
+	AlertTitle,
+} from "@notetaker-app/ui/components/alert";
+import { Badge } from "@notetaker-app/ui/components/badge";
 import { Button } from "@notetaker-app/ui/components/button";
 import {
 	Card,
@@ -10,10 +17,12 @@ import {
 	EmptyContent,
 	EmptyDescription,
 	EmptyHeader,
+	EmptyMedia,
 	EmptyTitle,
 } from "@notetaker-app/ui/components/empty";
 import { Skeleton } from "@notetaker-app/ui/components/skeleton";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { CircleAlertIcon, InboxIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
 	fetchMeetings,
@@ -34,6 +43,28 @@ type LibraryState =
 function sortNewestFirst(meetings: PublicMeeting[]): PublicMeeting[] {
 	return [...meetings].sort(
 		(a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
+	);
+}
+
+function MeetingStatusBadge({
+	status,
+}: {
+	readonly status: PublicMeeting["status"];
+}): React.ReactElement {
+	let dotClassName = "bg-amber-500";
+	if (status === "completed") {
+		dotClassName = "bg-emerald-500";
+	} else if (status === "failed") {
+		dotClassName = "bg-red-500";
+	}
+	return (
+		<Badge variant="outline">
+			<span
+				aria-hidden="true"
+				className={`size-1.5 rounded-full ${dotClassName}`}
+			/>
+			{status}
+		</Badge>
 	);
 }
 
@@ -99,19 +130,24 @@ function MeetingsLibrary(): React.ReactElement {
 				) : null}
 
 				{state.status === "error" ? (
-					<div className="flex flex-col items-start gap-3 rounded-lg border p-4">
-						<p className="text-destructive text-sm" role="alert">
-							{state.message}
-						</p>
-						<Button onClick={handleRetry} variant="outline">
-							Retry
-						</Button>
-					</div>
+					<Alert variant="error">
+						<CircleAlertIcon />
+						<AlertTitle>Could not load meetings</AlertTitle>
+						<AlertDescription>{state.message}</AlertDescription>
+						<AlertAction>
+							<Button onClick={handleRetry} size="sm" variant="outline">
+								Retry
+							</Button>
+						</AlertAction>
+					</Alert>
 				) : null}
 
 				{state.status === "ready" && state.meetings.length === 0 ? (
 					<Empty>
 						<EmptyHeader>
+							<EmptyMedia variant="icon">
+								<InboxIcon />
+							</EmptyMedia>
 							<EmptyTitle>No meetings yet</EmptyTitle>
 							<EmptyDescription>
 								Create your first meeting to upload audio and generate notes.
@@ -144,9 +180,7 @@ function MeetingsLibrary(): React.ReactElement {
 												{formatDuration(meeting.durationSeconds)}
 											</p>
 											<p className="mt-1">
-												<span className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs">
-													{meeting.status}
-												</span>
+												<MeetingStatusBadge status={meeting.status} />
 											</p>
 										</CardHeader>
 									</Card>

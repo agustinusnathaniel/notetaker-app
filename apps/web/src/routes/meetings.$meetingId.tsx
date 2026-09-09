@@ -1,4 +1,11 @@
 import { env } from "@notetaker-app/env/web";
+import {
+	Alert,
+	AlertAction,
+	AlertDescription,
+	AlertTitle,
+} from "@notetaker-app/ui/components/alert";
+import { Badge } from "@notetaker-app/ui/components/badge";
 import { Button } from "@notetaker-app/ui/components/button";
 import {
 	Card,
@@ -12,10 +19,26 @@ import {
 	EmptyContent,
 	EmptyDescription,
 	EmptyHeader,
+	EmptyMedia,
 	EmptyTitle,
 } from "@notetaker-app/ui/components/empty";
+import {
+	Progress,
+	ProgressIndicator,
+	ProgressLabel,
+	ProgressTrack,
+	ProgressValue,
+} from "@notetaker-app/ui/components/progress";
+import { Separator } from "@notetaker-app/ui/components/separator";
 import { Skeleton } from "@notetaker-app/ui/components/skeleton";
+import {
+	Tabs,
+	TabsList,
+	TabsPanel,
+	TabsTab,
+} from "@notetaker-app/ui/components/tabs";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { CircleAlertIcon, SearchXIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
 	audioUrlFor,
@@ -44,6 +67,37 @@ const PROCESSING_STATUSES: ReadonlySet<PublicMeeting["status"]> = new Set([
 	"transcribing",
 	"summarizing",
 ]);
+
+const PROCESSING_PROGRESS: Record<string, number> = {
+	draft: 15,
+	summarizing: 90,
+	transcribing: 70,
+	uploading: 40,
+};
+
+function MeetingStatusBadge({
+	status,
+	label,
+}: {
+	readonly label?: string;
+	readonly status: PublicMeeting["status"];
+}): React.ReactElement {
+	let dotClassName = "bg-amber-500";
+	if (status === "completed") {
+		dotClassName = "bg-emerald-500";
+	} else if (status === "failed") {
+		dotClassName = "bg-red-500";
+	}
+	return (
+		<Badge variant="outline">
+			<span
+				aria-hidden="true"
+				className={`size-1.5 rounded-full ${dotClassName}`}
+			/>
+			{label ?? status}
+		</Badge>
+	);
+}
 
 const FAILED_STAGE_LABELS: Record<string, string> = {
 	summary: "summary",
@@ -94,9 +148,10 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 							{formatDuration(meeting.durationSeconds)}
 						</CardDescription>
 						<p className="mt-1">
-							<span className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs">
-								Failed during {stageLabel}
-							</span>
+							<MeetingStatusBadge
+								label={`Failed during ${stageLabel}`}
+								status="failed"
+							/>
 						</p>
 					</CardHeader>
 					<CardPanel>
@@ -115,13 +170,11 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 								</p>
 							) : null}
 							{retryError ? (
-								<p
-									className="text-destructive text-sm"
-									id="meeting-retry-error"
-									role="alert"
-								>
-									{retryError}
-								</p>
+								<Alert id="meeting-retry-error" variant="error">
+									<CircleAlertIcon />
+									<AlertTitle>Retry failed</AlertTitle>
+									<AlertDescription>{retryError}</AlertDescription>
+								</Alert>
 							) : null}
 							<div className="flex flex-wrap gap-2">
 								{canRetryTranscription ? (
@@ -275,6 +328,9 @@ function MeetingDetail(): React.ReactElement {
 			<main className="container mx-auto w-full max-w-3xl px-4 py-6">
 				<Empty>
 					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<SearchXIcon />
+						</EmptyMedia>
 						<EmptyTitle>Meeting not found</EmptyTitle>
 						<EmptyDescription>
 							This meeting does not exist or the link is invalid.
@@ -291,19 +347,26 @@ function MeetingDetail(): React.ReactElement {
 	if (state.status === "error") {
 		return (
 			<main className="container mx-auto w-full max-w-3xl px-4 py-6">
-				<div className="flex flex-col items-start gap-3 rounded-lg border p-4">
-					<p className="text-destructive text-sm" role="alert">
-						{state.message}
-					</p>
-					<div className="flex gap-2">
-						<Button onClick={handleRetry} type="button" variant="outline">
-							Retry
-						</Button>
-						<Button render={<Link to="/" />} variant="ghost">
-							Back Home
-						</Button>
-					</div>
-				</div>
+				<Alert variant="error">
+					<CircleAlertIcon />
+					<AlertTitle>Could not load this meeting</AlertTitle>
+					<AlertDescription>{state.message}</AlertDescription>
+					<AlertAction>
+						<div className="flex gap-2">
+							<Button
+								onClick={handleRetry}
+								size="sm"
+								type="button"
+								variant="outline"
+							>
+								Retry
+							</Button>
+							<Button render={<Link to="/" />} size="sm" variant="ghost">
+								Back Home
+							</Button>
+						</div>
+					</AlertAction>
+				</Alert>
 			</main>
 		);
 	}
@@ -324,6 +387,7 @@ function MeetingDetail(): React.ReactElement {
 	}
 
 	if (PROCESSING_STATUSES.has(meeting.status)) {
+		const progressValue = PROCESSING_PROGRESS[meeting.status] ?? 15;
 		return (
 			<main className="container mx-auto w-full max-w-3xl px-4 py-6">
 				<section
@@ -339,16 +403,25 @@ function MeetingDetail(): React.ReactElement {
 								{formatDuration(meeting.durationSeconds)}
 							</CardDescription>
 							<p className="mt-1">
-								<span className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs">
-									{meeting.status}
-								</span>
+								<MeetingStatusBadge status={meeting.status} />
 							</p>
 						</CardHeader>
 						<CardPanel>
-							<p className="text-sm" role="status">
-								This meeting is still being processed. Check back shortly for
-								the transcript and summary.
-							</p>
+							<div className="flex flex-col gap-3">
+								<Progress value={progressValue}>
+									<div className="flex items-center justify-between gap-2">
+										<ProgressLabel>Processing {meeting.status}</ProgressLabel>
+										<ProgressValue />
+									</div>
+									<ProgressTrack>
+										<ProgressIndicator />
+									</ProgressTrack>
+								</Progress>
+								<p className="text-sm" role="status">
+									This meeting is still being processed. Check back shortly for
+									the transcript and summary.
+								</p>
+							</div>
 						</CardPanel>
 					</Card>
 					<Button render={<Link to="/" />} variant="outline">
@@ -373,9 +446,7 @@ function MeetingDetail(): React.ReactElement {
 							{formatDuration(meeting.durationSeconds)}
 						</CardDescription>
 						<p className="mt-1">
-							<span className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs">
-								{meeting.status}
-							</span>
+							<MeetingStatusBadge status={meeting.status} />
 						</p>
 					</CardHeader>
 				</Card>
@@ -404,68 +475,113 @@ function MeetingDetail(): React.ReactElement {
 					</section>
 				) : null}
 
-				<section aria-labelledby="meeting-transcript-heading">
-					<h2
-						className="mb-1 font-medium text-sm"
-						id="meeting-transcript-heading"
-					>
-						Transcript
-					</h2>
-					<p className="whitespace-pre-wrap text-sm leading-relaxed">
-						{meeting.transcript ?? "No transcript is available yet."}
-					</p>
-				</section>
+				<Separator className="my-4" />
 
-				<section aria-labelledby="meeting-summary-heading">
-					<h2 className="mb-1 font-medium text-sm" id="meeting-summary-heading">
-						Summary
-					</h2>
-					<p className="whitespace-pre-wrap text-sm leading-relaxed">
-						{meeting.summary ?? "No summary is available yet."}
-					</p>
-				</section>
-
-				<section aria-labelledby="meeting-takeaways-heading">
-					<h2
-						className="mb-1 font-medium text-sm"
-						id="meeting-takeaways-heading"
-					>
-						Key takeaways
-					</h2>
-					{meeting.takeaways.length > 0 ? (
-						<ul className="list-disc space-y-1 pl-5 text-sm">
-							{meeting.takeaways.map((takeaway, index) => (
-								<li key={`${String(index)}-${takeaway}`}>{takeaway}</li>
-							))}
-						</ul>
-					) : (
-						<p className="text-muted-foreground text-sm">
-							No takeaways were recorded.
-						</p>
-					)}
-				</section>
-
-				<section aria-labelledby="meeting-actions-heading">
-					<h2 className="mb-1 font-medium text-sm" id="meeting-actions-heading">
-						Action items
-					</h2>
-					{meeting.actionItems.length > 0 ? (
-						<ul className="list-disc space-y-1 pl-5 text-sm">
-							{meeting.actionItems.map((item, index) => (
-								<li
-									key={`${String(index)}-${item.owner ?? "unassigned"}-${item.text}`}
+				<Tabs defaultValue="transcript">
+					<div className="border-b">
+						<TabsList variant="underline">
+							<TabsTab value="transcript">Transcript</TabsTab>
+							<TabsTab value="summary">Summary</TabsTab>
+							<TabsTab value="takeaways">
+								Takeaways
+								<Badge
+									className="not-in-data-active:text-muted-foreground"
+									variant="outline"
 								>
-									{item.text}
-									{item.owner ? ` (owner: ${item.owner})` : null}
-								</li>
-							))}
-						</ul>
-					) : (
-						<p className="text-muted-foreground text-sm">
-							No action items were recorded.
-						</p>
-					)}
-				</section>
+									{meeting.takeaways.length}
+								</Badge>
+							</TabsTab>
+							<TabsTab value="actions">
+								Actions
+								<Badge
+									className="not-in-data-active:text-muted-foreground"
+									variant="outline"
+								>
+									{meeting.actionItems.length}
+								</Badge>
+							</TabsTab>
+						</TabsList>
+					</div>
+					<TabsPanel value="transcript">
+						<section
+							aria-labelledby="meeting-transcript-heading"
+							className="pt-2"
+						>
+							<h2
+								className="mb-1 font-medium text-sm"
+								id="meeting-transcript-heading"
+							>
+								Transcript
+							</h2>
+							<p className="whitespace-pre-wrap text-sm leading-relaxed">
+								{meeting.transcript ?? "No transcript is available yet."}
+							</p>
+						</section>
+					</TabsPanel>
+					<TabsPanel value="summary">
+						<section aria-labelledby="meeting-summary-heading" className="pt-2">
+							<h2
+								className="mb-1 font-medium text-sm"
+								id="meeting-summary-heading"
+							>
+								Summary
+							</h2>
+							<p className="whitespace-pre-wrap text-sm leading-relaxed">
+								{meeting.summary ?? "No summary is available yet."}
+							</p>
+						</section>
+					</TabsPanel>
+					<TabsPanel value="takeaways">
+						<section
+							aria-labelledby="meeting-takeaways-heading"
+							className="pt-2"
+						>
+							<h2
+								className="mb-1 font-medium text-sm"
+								id="meeting-takeaways-heading"
+							>
+								Key takeaways
+							</h2>
+							{meeting.takeaways.length > 0 ? (
+								<ul className="list-disc space-y-1 pl-5 text-sm">
+									{meeting.takeaways.map((takeaway, index) => (
+										<li key={`${String(index)}-${takeaway}`}>{takeaway}</li>
+									))}
+								</ul>
+							) : (
+								<p className="text-muted-foreground text-sm">
+									No takeaways were recorded.
+								</p>
+							)}
+						</section>
+					</TabsPanel>
+					<TabsPanel value="actions">
+						<section aria-labelledby="meeting-actions-heading" className="pt-2">
+							<h2
+								className="mb-1 font-medium text-sm"
+								id="meeting-actions-heading"
+							>
+								Action items
+							</h2>
+							{meeting.actionItems.length > 0 ? (
+								<ul className="list-disc space-y-1 pl-5 text-sm">
+									{meeting.actionItems.map((item, index) => (
+										<li
+											key={`${String(index)}-${item.owner ?? "unassigned"}-${item.text}`}
+										>
+											{item.text}
+											{item.owner ? ` (owner: ${item.owner})` : null}
+										</li>
+									))}
+								</ul>
+							) : (
+								<p className="text-muted-foreground text-sm">
+									No action items were recorded.
+								</p>
+							)}
+						</section>
+					</TabsPanel>
+				</Tabs>
 
 				<div>
 					<Button render={<Link to="/" />} variant="outline">
