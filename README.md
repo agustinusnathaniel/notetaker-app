@@ -120,16 +120,36 @@ Open [http://localhost:3001](http://localhost:3001) for the web app. The API ser
 
 `alchemy login --configure` stores the selected Cloudflare, Neon, PlanetScale, and/or Prisma provider profiles under `~/.alchemy`; no provider-specific setup command is required by this scaffold.
 
-Deploys are staged and default to a personal `dev_<username>` stage. For production, run the deploy with an explicit stage from `packages/infra`:
+Deploys are staged and default to a personal `dev_<username>` stage. The canonical production stage is `prod` (the older `production` name is retired, do not use it):
 
 ```bash
-cd packages/infra && pnpm exec alchemy deploy --stage production
+cd packages/infra && pnpm exec alchemy deploy --stage prod
 ```
 
-### Production origins
+### Production deploy script
 
-- Required after the first deploy: set `CORS_ORIGIN` in `apps/server/.env` to the exact deployed web origin, such as `https://app.example.com`, then deploy the server again.
-- To allow an additional exact origin (for example a custom domain alongside the workers.dev web URL), set `CORS_EXTRA_ORIGINS` to a comma-separated list of exact origins with no wildcards, such as `https://notetaker-app.sznm.dev`, then deploy the server again.
+Use `./scripts/deploy-prod.sh` for prod deploys. It runs migrations, deploys stage `prod` with exact CORS origins, and prints verify commands:
+
+```bash
+WEB_PROD_URL=https://<web-prod> ./scripts/deploy-prod.sh
+CORS_EXTRA_ORIGINS=https://custom.example.com ./scripts/deploy-prod.sh # optional, defaults to https://notetaker-app.sznm.dev
+```
+
+Notes:
+
+- Origins are passed inline as process env vars (`CORS_ORIGIN`, `CORS_EXTRA_ORIGINS`) and never written to local `.env` files, so local `localhost` CORS values are preserved.
+- Origins must be exact `https` URLs with no wildcards, paths, or trailing slashes.
+- The existing `fft` R2 bucket is adopted by name and retained on stack removal, so prod deploys are a noop for stored audio.
+- Provider auth comes from `~/.alchemy` (`pnpm run infra:login`); the script reads no secrets.
+
+Verify after deploy (server URL comes from the Alchemy outputs):
+
+```bash
+curl -sS "$SERVER_PROD_URL/"
+curl -sS -o /dev/null -w "%{http_code}\n" "$WEB_PROD_URL/"
+curl -sS -D - -o /dev/null -H "Origin: $WEB_PROD_URL" "$SERVER_PROD_URL/" | grep -i access-control-allow-origin
+curl -sS -D - -o /dev/null -H "Origin: https://evil.example.com" "$SERVER_PROD_URL/" | grep -i access-control-allow-origin && echo "CORS CHECK FAILED" || echo "CORS OK"
+```
 
 ## Git Hooks and Formatting
 
