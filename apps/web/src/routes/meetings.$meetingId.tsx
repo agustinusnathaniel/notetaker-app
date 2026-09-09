@@ -166,6 +166,7 @@ interface FailedMeetingViewProps {
 	readonly onReload: () => void;
 	readonly onRetrySummary: () => void;
 	readonly onRetryTranscription: () => void;
+	readonly onUpdated: (updated: PublicMeeting) => void;
 	readonly retryError: string | null;
 	readonly retryStage: RetryStage;
 }
@@ -176,9 +177,14 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 		onReload,
 		onRetrySummary,
 		onRetryTranscription,
+		onUpdated,
 		retryError,
 		retryStage,
 	} = props;
+	const [isDeleting, setIsDeleting] = useState<boolean>(false);
+	const handleDeletingChange = useCallback((deleting: boolean): void => {
+		setIsDeleting(deleting);
+	}, []);
 	const stageLabel =
 		(meeting.failedStage && FAILED_STAGE_LABELS[meeting.failedStage]) ??
 		"processing";
@@ -189,13 +195,14 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 		typeof meeting.transcript === "string" &&
 		meeting.transcript.trim().length > 0;
 	const isRetrying = retryStage !== "idle";
+	const isBusy = isRetrying || isDeleting;
 	const describedBy = retryError ? "meeting-retry-error" : undefined;
 	let alertRetryButton: React.ReactElement;
 	if (canRetryTranscription) {
 		alertRetryButton = (
 			<Button
 				aria-describedby={describedBy}
-				disabled={isRetrying}
+				disabled={isBusy}
 				loading={retryStage === "transcribing"}
 				onClick={onRetryTranscription}
 				size="xs"
@@ -208,7 +215,7 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 		alertRetryButton = (
 			<Button
 				aria-describedby={describedBy}
-				disabled={isRetrying}
+				disabled={isBusy}
 				loading={retryStage === "summarizing"}
 				onClick={onRetrySummary}
 				size="xs"
@@ -219,12 +226,7 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 		);
 	} else {
 		alertRetryButton = (
-			<Button
-				disabled={isRetrying}
-				onClick={onReload}
-				size="xs"
-				variant="outline"
-			>
+			<Button disabled={isBusy} onClick={onReload} size="xs" variant="outline">
 				Retry
 			</Button>
 		);
@@ -284,11 +286,12 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 						</CardPanel>
 					</Card>
 					<CardFrameFooter className="border-t px-4 py-3 sm:px-6">
-						<div className="flex flex-wrap items-center gap-2">
+						<div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
 							{canRetryTranscription ? (
 								<Button
 									aria-describedby={describedBy}
-									disabled={isRetrying}
+									className="max-sm:w-full"
+									disabled={isBusy}
 									loading={retryStage === "transcribing"}
 									onClick={onRetryTranscription}
 								>
@@ -298,7 +301,8 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 							{canRetrySummary ? (
 								<Button
 									aria-describedby={describedBy}
-									disabled={isRetrying}
+									className="max-sm:w-full"
+									disabled={isBusy}
 									loading={retryStage === "summarizing"}
 									onClick={onRetrySummary}
 								>
@@ -306,13 +310,28 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 								</Button>
 							) : null}
 							<Button
-								disabled={isRetrying}
+								className="max-sm:w-full"
+								disabled={isBusy}
 								onClick={onReload}
 								variant="outline"
 							>
 								Reload
 							</Button>
-							<Button render={<Link to="/" />} variant="link">
+							<EditMeetingDialog
+								disabled={isBusy}
+								meeting={meeting}
+								onUpdated={onUpdated}
+							/>
+							<DeleteMeetingDialog
+								disabled={isRetrying}
+								meetingId={meeting.id}
+								onDeletingChange={handleDeletingChange}
+							/>
+							<Button
+								className="max-sm:w-full"
+								render={<Link to="/" />}
+								variant="link"
+							>
 								<ChevronLeftIcon aria-hidden="true" />
 								Back Home
 							</Button>
@@ -325,9 +344,11 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 }
 
 function EditMeetingDialog({
+	disabled = false,
 	meeting,
 	onUpdated,
 }: {
+	readonly disabled?: boolean;
 	readonly meeting: PublicMeeting;
 	readonly onUpdated: (updated: PublicMeeting) => void;
 }): React.ReactElement {
@@ -436,7 +457,12 @@ function EditMeetingDialog({
 		<Dialog onOpenChange={handleOpenChange} open={open}>
 			<DialogTrigger
 				render={
-					<Button className="max-sm:w-full" size="sm" variant="outline">
+					<Button
+						className="max-sm:w-full"
+						disabled={disabled}
+						size="sm"
+						variant="outline"
+					>
 						<PencilIcon aria-hidden="true" />
 						Edit
 					</Button>
@@ -531,9 +557,13 @@ function EditMeetingDialog({
 }
 
 function DeleteMeetingDialog({
+	disabled = false,
 	meetingId,
+	onDeletingChange,
 }: {
+	readonly disabled?: boolean;
 	readonly meetingId: string;
+	readonly onDeletingChange?: (deleting: boolean) => void;
 }): React.ReactElement {
 	const navigate = useNavigate();
 	const [error, setError] = useState<string | null>(null);
@@ -542,19 +572,21 @@ function DeleteMeetingDialog({
 	const handleConfirm = useCallback((): void => {
 		setError(null);
 		setDeleting(true);
+		onDeletingChange?.(true);
 		deleteMeeting(meetingId)
 			.then(() => {
 				navigate({ to: "/" }).catch(() => undefined);
 			})
 			.catch((failure: unknown) => {
 				setDeleting(false);
+				onDeletingChange?.(false);
 				setError(
 					failure instanceof Error
 						? failure.message
 						: "Could not delete this meeting. Please try again."
 				);
 			});
-	}, [meetingId, navigate]);
+	}, [meetingId, navigate, onDeletingChange]);
 
 	return (
 		<AlertDialog>
@@ -562,6 +594,7 @@ function DeleteMeetingDialog({
 				render={
 					<Button
 						className="max-sm:w-full"
+						disabled={disabled || deleting}
 						size="sm"
 						variant="destructive-outline"
 					>
@@ -607,6 +640,97 @@ function DeleteMeetingDialog({
 				</AlertDialogFooter>
 			</AlertDialogPopup>
 		</AlertDialog>
+	);
+}
+
+function ProcessingMeetingView({
+	meeting,
+	onReload,
+}: {
+	readonly meeting: PublicMeeting;
+	readonly onReload: () => void;
+}): React.ReactElement {
+	const [isDeleting, setIsDeleting] = useState<boolean>(false);
+	const handleDeletingChange = useCallback((deleting: boolean): void => {
+		setIsDeleting(deleting);
+	}, []);
+	const progressValue = PROCESSING_PROGRESS[meeting.status] ?? 15;
+	return (
+		<main className="container mx-auto w-full min-w-0 max-w-3xl overflow-x-clip px-4 py-6">
+			<section
+				aria-labelledby="meeting-title"
+				className="flex min-w-0 flex-col gap-4"
+			>
+				<CardFrame className="min-w-0 overflow-x-clip">
+					<CardFrameHeader className="px-4 max-sm:grid-cols-1! max-sm:gap-2 sm:px-6">
+						{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h1 with the meeting title as content. */}
+						<CardFrameTitle
+							className="self-start break-words font-heading text-xl sm:text-2xl"
+							id="meeting-title"
+							render={<h1 />}
+						>
+							{meeting.title}
+						</CardFrameTitle>
+						<CardFrameDescription className="self-start break-words">
+							{formatDate(meeting.occurredAt)} ·{" "}
+							{formatDuration(meeting.durationSeconds)}
+						</CardFrameDescription>
+						<CardFrameAction className="max-sm:w-full">
+							<MeetingStatusBadge status={meeting.status} />
+						</CardFrameAction>
+					</CardFrameHeader>
+					<Card>
+						<CardPanel className="min-w-0 p-4 sm:p-6">
+							<div className="flex min-w-0 flex-col gap-3">
+								<Progress value={progressValue}>
+									<div className="flex items-center justify-between gap-2">
+										<ProgressLabel>Processing {meeting.status}</ProgressLabel>
+										<ProgressValue />
+									</div>
+									<ProgressTrack>
+										<ProgressIndicator />
+									</ProgressTrack>
+								</Progress>
+								<p className="text-sm" role="status">
+									This meeting is still being processed. Check back shortly for
+									the transcript and summary.
+								</p>
+							</div>
+						</CardPanel>
+					</Card>
+					<CardFrameFooter className="border-t px-4 py-3 sm:px-6">
+						<div className="flex min-w-0 flex-col gap-3">
+							<div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+								<Button
+									className="max-sm:w-full"
+									disabled={isDeleting}
+									onClick={onReload}
+									variant="outline"
+								>
+									Reload
+								</Button>
+								<DeleteMeetingDialog
+									meetingId={meeting.id}
+									onDeletingChange={handleDeletingChange}
+								/>
+								<Button
+									className="max-sm:w-full"
+									render={<Link to="/" />}
+									size="sm"
+									variant="link"
+								>
+									<ChevronLeftIcon aria-hidden="true" />
+									Back Home
+								</Button>
+							</div>
+							<p className="text-muted-foreground text-xs">
+								Processing runs automatically. Reload to check for updates.
+							</p>
+						</div>
+					</CardFrameFooter>
+				</CardFrame>
+			</section>
+		</main>
 	);
 }
 
@@ -886,6 +1010,7 @@ function MeetingDetail(): React.ReactElement {
 				onReload={handleRetry}
 				onRetrySummary={handleRetrySummaryClick}
 				onRetryTranscription={handleRetryTranscriptionClick}
+				onUpdated={handleMeetingUpdated}
 				retryError={retryError}
 				retryStage={retryStage}
 			/>
@@ -893,65 +1018,7 @@ function MeetingDetail(): React.ReactElement {
 	}
 
 	if (PROCESSING_STATUSES.has(meeting.status)) {
-		const progressValue = PROCESSING_PROGRESS[meeting.status] ?? 15;
-		return (
-			<main className="container mx-auto w-full min-w-0 max-w-3xl overflow-x-clip px-4 py-6">
-				<section
-					aria-labelledby="meeting-title"
-					className="flex min-w-0 flex-col gap-4"
-				>
-					<CardFrame className="min-w-0 overflow-x-clip">
-						<CardFrameHeader className="px-4 max-sm:grid-cols-1! max-sm:gap-2 sm:px-6">
-							{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h1 with the meeting title as content. */}
-							<CardFrameTitle
-								className="self-start break-words font-heading text-xl sm:text-2xl"
-								id="meeting-title"
-								render={<h1 />}
-							>
-								{meeting.title}
-							</CardFrameTitle>
-							<CardFrameDescription className="self-start break-words">
-								{formatDate(meeting.occurredAt)} ·{" "}
-								{formatDuration(meeting.durationSeconds)}
-							</CardFrameDescription>
-							<CardFrameAction className="max-sm:w-full">
-								<MeetingStatusBadge status={meeting.status} />
-							</CardFrameAction>
-						</CardFrameHeader>
-						<Card>
-							<CardPanel className="min-w-0 p-4 sm:p-6">
-								<div className="flex min-w-0 flex-col gap-3">
-									<Progress value={progressValue}>
-										<div className="flex items-center justify-between gap-2">
-											<ProgressLabel>Processing {meeting.status}</ProgressLabel>
-											<ProgressValue />
-										</div>
-										<ProgressTrack>
-											<ProgressIndicator />
-										</ProgressTrack>
-									</Progress>
-									<p className="text-sm" role="status">
-										This meeting is still being processed. Check back shortly
-										for the transcript and summary.
-									</p>
-								</div>
-							</CardPanel>
-						</Card>
-						<CardFrameFooter className="border-t px-4 py-3 sm:px-6">
-							<div className="flex w-full flex-wrap items-center justify-between gap-2">
-								<p className="text-muted-foreground text-xs">
-									Processing runs automatically. Reload to check for updates.
-								</p>
-								<Button render={<Link to="/" />} size="sm" variant="link">
-									<ChevronLeftIcon aria-hidden="true" />
-									Back Home
-								</Button>
-							</div>
-						</CardFrameFooter>
-					</CardFrame>
-				</section>
-			</main>
-		);
+		return <ProcessingMeetingView meeting={meeting} onReload={handleRetry} />;
 	}
 
 	const audioUrl = audioUrlFor(env.VITE_SERVER_URL, meeting.id);
