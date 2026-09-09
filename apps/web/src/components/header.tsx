@@ -8,8 +8,7 @@ export default function Header() {
 			<div className="flex flex-row items-center justify-between px-2 py-1">
 				<nav className="flex items-center gap-4 text-lg">
 					<Link to="/">Home</Link>
-					{/* TODO6 adds the /meetings/new route; plain anchor avoids a typed-link error until then. */}
-					<a href="/meetings/new">New meeting</a>
+					<Link to="/meetings/new">New meeting</Link>
 				</nav>
 				<div className="flex items-center gap-2">
 					<ModeToggle />

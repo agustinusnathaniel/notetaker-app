@@ -82,7 +82,7 @@ function MeetingsLibrary(): React.ReactElement {
 						Meetings
 					</h1>
 					{state.status === "ready" && state.meetings.length > 0 ? (
-						<Button render={<a href="/meetings/new" />}>New meeting</Button>
+						<Button render={<Link to="/meetings/new" />}>New meeting</Button>
 					) : null}
 				</div>
 
@@ -118,7 +118,7 @@ function MeetingsLibrary(): React.ReactElement {
 							</EmptyDescription>
 						</EmptyHeader>
 						<EmptyContent>
-							<Button render={<a href="/meetings/new" />}>New meeting</Button>
+							<Button render={<Link to="/meetings/new" />}>New meeting</Button>
 						</EmptyContent>
 					</Empty>
 				) : null}

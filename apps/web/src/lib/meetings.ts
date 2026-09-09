@@ -156,6 +156,113 @@ export async function fetchMeeting(
 	return parseMeetingDetail(body);
 }
 
+const EXTENSION_MIME_TYPES: Record<string, string> = {
+	aac: "audio/aac",
+	flac: "audio/flac",
+	m4a: "audio/mp4",
+	mp3: "audio/mpeg",
+	oga: "audio/ogg",
+	ogg: "audio/ogg",
+	opus: "audio/opus",
+	wav: "audio/wav",
+	webm: "audio/webm",
+};
+
+export function mimeTypeForFilename(filename: string): string | null {
+	const extension = filename.split(".").pop()?.trim().toLowerCase() ?? "";
+	if (!extension) {
+		return null;
+	}
+	return EXTENSION_MIME_TYPES[extension] ?? null;
+}
+
+function effectiveAudioMimeType(file: File): string | null {
+	if (file.type) {
+		return file.type;
+	}
+	return mimeTypeForFilename(file.name);
+}
+
+export async function createMeeting(
+	filename: string,
+	durationSeconds: number,
+	signal?: AbortSignal
+): Promise<PublicMeeting> {
+	const response = await fetch(`${env.VITE_SERVER_URL}/api/meetings`, {
+		body: JSON.stringify({
+			durationSeconds,
+			filename,
+			source: "upload",
+		}),
+		headers: { "Content-Type": "application/json" },
+		method: "POST",
+		signal,
+	});
+	if (!response.ok) {
+		await parseErrorResponse(response);
+	}
+	const body: unknown = await response.json();
+	return parseMeetingDetail(body);
+}
+
+export async function uploadAudio(
+	meetingId: string,
+	file: File,
+	signal?: AbortSignal
+): Promise<PublicMeeting> {
+	const mimeType = effectiveAudioMimeType(file);
+	if (!mimeType) {
+		throw new MeetingApiError({
+			code: "unsupported_media_type",
+			message: "Unsupported audio type. Choose another file.",
+		});
+	}
+	const response = await fetch(
+		`${env.VITE_SERVER_URL}/api/meetings/${meetingId}/audio`,
+		{
+			body: file,
+			headers: { "Content-Type": mimeType },
+			method: "PUT",
+			signal,
+		}
+	);
+	if (!response.ok) {
+		await parseErrorResponse(response);
+	}
+	const body: unknown = await response.json();
+	return parseMeetingDetail(body);
+}
+
+export async function requestTranscription(
+	meetingId: string,
+	signal?: AbortSignal
+): Promise<PublicMeeting> {
+	const response = await fetch(
+		`${env.VITE_SERVER_URL}/api/meetings/${meetingId}/transcription`,
+		{ method: "POST", signal }
+	);
+	if (!response.ok) {
+		await parseErrorResponse(response);
+	}
+	const body: unknown = await response.json();
+	return parseMeetingDetail(body);
+}
+
+export async function requestSummary(
+	meetingId: string,
+	signal?: AbortSignal
+): Promise<PublicMeeting> {
+	const response = await fetch(
+		`${env.VITE_SERVER_URL}/api/meetings/${meetingId}/summary`,
+		{ method: "POST", signal }
+	);
+	if (!response.ok) {
+		await parseErrorResponse(response);
+	}
+	const body: unknown = await response.json();
+	return parseMeetingDetail(body);
+}
+
 export function audioUrlFor(serverUrl: string, meetingId: string): string {
 	return `${serverUrl}/api/meetings/${meetingId}/audio`;
 }
