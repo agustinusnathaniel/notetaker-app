@@ -128,27 +128,34 @@ cd packages/infra && pnpm exec alchemy deploy --stage prod
 
 ### Production deploy script
 
-Use `./scripts/deploy-prod.sh` for prod deploys. It runs migrations, deploys stage `prod` with exact CORS origins, and prints verify commands:
+Use `pnpm run deploy:prod` (or `./scripts/deploy-prod.sh`) for prod deploys. It takes no arguments: it runs migrations, deploys stage `prod`, and prints verify commands against the static prod domains.
 
 ```bash
-WEB_PROD_URL=https://<web-prod> ./scripts/deploy-prod.sh
-CORS_EXTRA_ORIGINS=https://custom.example.com ./scripts/deploy-prod.sh # optional, defaults to https://notetaker-app.sznm.dev
+pnpm run deploy:prod
 ```
+
+### Production origins
+
+Prod domains and CORS are static (exact origins, no wildcards):
+
+- Web: `https://notetaker-app.sznm.dev`
+- API: `https://notetaker-api.sznm.dev`
+- Prod `CORS_ORIGIN` is the web custom domain above, set as a literal in `packages/infra/alchemy.run.ts`, so local `localhost` values in `apps/server/.env` stay dev-only. Dev keeps `CORS_ORIGIN=http://localhost:3001` from env.
+- `CORS_EXTRA_ORIGINS` remains an optional env override (default empty) for transition, e.g. a workers.dev web URL during cutover; it is never required in prod.
 
 Notes:
 
-- Origins are passed inline as process env vars (`CORS_ORIGIN`, `CORS_EXTRA_ORIGINS`) and never written to local `.env` files, so local `localhost` CORS values are preserved.
-- Origins must be exact `https` URLs with no wildcards, paths, or trailing slashes.
+- The script never writes to local `.env` files.
 - The existing `fft` R2 bucket is adopted by name and retained on stack removal, so prod deploys are a noop for stored audio.
-- Provider auth comes from `~/.alchemy` (`pnpm run infra:login`); the script reads no secrets.
+- Provider auth comes from `~/.alchemy` (`pnpm run infra:login`); the script reads no secrets, so a missing login is the only expected setup failure.
 
-Verify after deploy (server URL comes from the Alchemy outputs):
+Verify after deploy:
 
 ```bash
-curl -sS "$SERVER_PROD_URL/"
-curl -sS -o /dev/null -w "%{http_code}\n" "$WEB_PROD_URL/"
-curl -sS -D - -o /dev/null -H "Origin: $WEB_PROD_URL" "$SERVER_PROD_URL/" | grep -i access-control-allow-origin
-curl -sS -D - -o /dev/null -H "Origin: https://evil.example.com" "$SERVER_PROD_URL/" | grep -i access-control-allow-origin && echo "CORS CHECK FAILED" || echo "CORS OK"
+curl -sS "https://notetaker-api.sznm.dev/"
+curl -sS -o /dev/null -w "%{http_code}\n" "https://notetaker-app.sznm.dev/"
+curl -sS -D - -o /dev/null -H "Origin: https://notetaker-app.sznm.dev" "https://notetaker-api.sznm.dev/" | grep -i access-control-allow-origin
+curl -sS -D - -o /dev/null -H "Origin: https://evil.example.com" "https://notetaker-api.sznm.dev/" | grep -i access-control-allow-origin && echo "CORS CHECK FAILED" || echo "CORS OK"
 ```
 
 ## Git Hooks and Formatting
