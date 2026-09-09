@@ -315,7 +315,7 @@ function NewMeeting(): React.ReactElement {
 					</CardHeader>
 					<CardPanel>
 						<form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-							<Field>
+							<Field invalid={!!fieldError}>
 								<FieldLabel htmlFor="audio-file">Audio file</FieldLabel>
 								<Input
 									accept={ACCEPT_VALUE}
@@ -327,7 +327,9 @@ function NewMeeting(): React.ReactElement {
 									type="file"
 								/>
 								{fieldError ? (
-									<FieldError id="audio-file-error">{fieldError}</FieldError>
+									<FieldError id="audio-file-error" match={true}>
+										{fieldError}
+									</FieldError>
 								) : null}
 								<FieldDescription>
 									Upload an MP3, WAV, M4A, OGG, OPUS, FLAC, AAC, or WebM file up
