@@ -344,3 +344,17 @@ export function formatDuration(durationSeconds: number): string {
 	}
 	return `${String(seconds)}s`;
 }
+
+export function formatSegmentTime(valueSeconds: number): string {
+	if (!Number.isFinite(valueSeconds) || valueSeconds < 0) {
+		return "00:00";
+	}
+	const total = Math.floor(valueSeconds);
+	const hours = Math.floor(total / 3600);
+	const minutes = Math.floor((total % 3600) / 60);
+	const seconds = total % 60;
+	if (hours > 0) {
+		return `${String(hours)}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+	}
+	return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
