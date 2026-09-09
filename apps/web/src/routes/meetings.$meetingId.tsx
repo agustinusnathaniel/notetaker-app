@@ -49,6 +49,7 @@ import {
 } from "@notetaker-app/ui/components/empty";
 import {
 	Field,
+	FieldDescription,
 	FieldError,
 	FieldLabel,
 } from "@notetaker-app/ui/components/field";
@@ -226,15 +227,18 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 		);
 	}
 	return (
-		<main className="container mx-auto w-full max-w-3xl px-4 py-6">
-			<section aria-labelledby="meeting-title" className="flex flex-col gap-4">
-				<CardFrame>
-					<CardFrameHeader>
+		<main className="container mx-auto w-full min-w-0 max-w-3xl overflow-x-clip px-4 py-6">
+			<section
+				aria-labelledby="meeting-title"
+				className="flex min-w-0 flex-col gap-4"
+			>
+				<CardFrame className="min-w-0 overflow-x-clip">
+					<CardFrameHeader className="px-4 max-sm:grid-cols-1 max-sm:gap-2 sm:px-6">
 						{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h1 with the meeting title as content. */}
 						<CardFrameTitle id="meeting-title" render={<h1 />}>
 							{meeting.title}
 						</CardFrameTitle>
-						<CardFrameDescription>
+						<CardFrameDescription className="break-words">
 							{formatDate(meeting.occurredAt)} ·{" "}
 							{formatDuration(meeting.durationSeconds)}
 						</CardFrameDescription>
@@ -246,9 +250,9 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 						</CardFrameAction>
 					</CardFrameHeader>
 					<Card>
-						<CardPanel>
-							<div className="flex flex-col gap-3">
-								<p className="text-sm">
+						<CardPanel className="min-w-0 p-4 sm:p-6">
+							<div className="flex min-w-0 flex-col gap-3">
+								<p className="break-words text-sm">
 									Processing failed during {stageLabel}.{" "}
 									{canRetryTranscription || canRetrySummary
 										? "You can retry this step below."
@@ -272,7 +276,7 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 							</div>
 						</CardPanel>
 					</Card>
-					<CardFrameFooter className="border-t py-3">
+					<CardFrameFooter className="border-t px-4 py-3 sm:px-6">
 						<div className="flex flex-wrap items-center gap-2">
 							{canRetryTranscription ? (
 								<Button
@@ -325,7 +329,9 @@ function EditMeetingDialog({
 	const [description, setDescription] = useState<string>(
 		meeting.description ?? ""
 	);
-	const [fieldError, setFieldError] = useState<string | null>(null);
+	const [titleError, setTitleError] = useState<string | null>(null);
+	const [descriptionError, setDescriptionError] = useState<string | null>(null);
+	const [formError, setFormError] = useState<string | null>(null);
 	const [saving, setSaving] = useState<boolean>(false);
 
 	const handleOpenChange = useCallback(
@@ -334,7 +340,9 @@ function EditMeetingDialog({
 			if (next) {
 				setTitle(meeting.title);
 				setDescription(meeting.description ?? "");
-				setFieldError(null);
+				setTitleError(null);
+				setDescriptionError(null);
+				setFormError(null);
 				setSaving(false);
 			}
 		},
@@ -344,35 +352,48 @@ function EditMeetingDialog({
 	const handleTitleChange = useCallback(
 		(event: React.ChangeEvent<HTMLInputElement>): void => {
 			setTitle(event.target.value);
+			if (titleError) {
+				setTitleError(null);
+			}
 		},
-		[]
+		[titleError]
 	);
 
 	const handleDescriptionChange = useCallback(
 		(event: React.ChangeEvent<HTMLTextAreaElement>): void => {
 			setDescription(event.target.value);
+			if (descriptionError) {
+				setDescriptionError(null);
+			}
 		},
-		[]
+		[descriptionError]
 	);
 
 	const handleSubmit = useCallback(
 		(event: React.FormEvent<HTMLFormElement>): void => {
 			event.preventDefault();
 			const nextTitle = title.trim();
-			if (!nextTitle) {
-				setFieldError("Title is required.");
-				return;
-			}
-			if (nextTitle.length > 100) {
-				setFieldError("Title must be 100 characters or fewer.");
-				return;
-			}
 			const trimmedDescription = description.trim();
+			let hasError = false;
+			if (!nextTitle) {
+				setTitleError("Title is required.");
+				hasError = true;
+			} else if (nextTitle.length > 100) {
+				setTitleError("Title must be 100 characters or fewer.");
+				hasError = true;
+			} else {
+				setTitleError(null);
+			}
 			if (trimmedDescription.length > 200) {
-				setFieldError("Description must be 200 characters or fewer.");
+				setDescriptionError("Description must be 200 characters or fewer.");
+				hasError = true;
+			} else {
+				setDescriptionError(null);
+			}
+			if (hasError) {
 				return;
 			}
-			setFieldError(null);
+			setFormError(null);
 			setSaving(true);
 			updateMeeting(meeting.id, {
 				description: trimmedDescription ? trimmedDescription : null,
@@ -385,7 +406,7 @@ function EditMeetingDialog({
 				})
 				.catch((error: unknown) => {
 					setSaving(false);
-					setFieldError(
+					setFormError(
 						error instanceof Error
 							? error.message
 							: "Could not save changes. Please try again."
@@ -394,6 +415,15 @@ function EditMeetingDialog({
 		},
 		[description, meeting.id, onUpdated, title]
 	);
+
+	const titleInvalid = titleError !== null;
+	const descriptionInvalid = descriptionError !== null;
+	const titleDescribedBy = titleInvalid
+		? "meeting-title-input-description meeting-title-input-error"
+		: "meeting-title-input-description";
+	const descriptionDescribedBy = descriptionInvalid
+		? "meeting-description-input-description meeting-description-input-error"
+		: "meeting-description-input-description";
 
 	return (
 		<Dialog onOpenChange={handleOpenChange} open={open}>
@@ -414,22 +444,35 @@ function EditMeetingDialog({
 				</DialogHeader>
 				<form className="contents" onSubmit={handleSubmit}>
 					<DialogPanel>
-						<div className="flex flex-col gap-4">
-							<Field invalid={!!fieldError}>
+						<div className="flex min-w-0 flex-col gap-4">
+							<Field invalid={titleInvalid}>
 								<FieldLabel htmlFor="meeting-title-input">Title</FieldLabel>
+								<FieldDescription id="meeting-title-input-description">
+									A short name for this meeting. Up to 100 characters.
+								</FieldDescription>
 								<Input
+									aria-describedby={titleDescribedBy}
+									aria-invalid={titleInvalid}
 									disabled={saving}
 									id="meeting-title-input"
 									maxLength={100}
 									onChange={handleTitleChange}
 									value={title}
 								/>
+								<FieldError id="meeting-title-input-error" match={titleInvalid}>
+									{titleError ?? ""}
+								</FieldError>
 							</Field>
-							<Field>
+							<Field invalid={descriptionInvalid}>
 								<FieldLabel htmlFor="meeting-description-input">
 									Description
 								</FieldLabel>
+								<FieldDescription id="meeting-description-input-description">
+									Optional context for this meeting. Up to 200 characters.
+								</FieldDescription>
 								<Textarea
+									aria-describedby={descriptionDescribedBy}
+									aria-invalid={descriptionInvalid}
 									disabled={saving}
 									id="meeting-description-input"
 									maxLength={200}
@@ -437,9 +480,21 @@ function EditMeetingDialog({
 									rows={3}
 									value={description}
 								/>
+								<FieldError
+									id="meeting-description-input-error"
+									match={descriptionInvalid}
+								>
+									{descriptionError ?? ""}
+								</FieldError>
 							</Field>
-							{fieldError ? (
-								<FieldError match={true}>{fieldError}</FieldError>
+							{formError ? (
+								<p
+									className="text-destructive-foreground text-xs"
+									id="meeting-edit-form-error"
+									role="alert"
+								>
+									{formError}
+								</p>
 							) : null}
 						</div>
 					</DialogPanel>
@@ -451,7 +506,14 @@ function EditMeetingDialog({
 								</Button>
 							}
 						/>
-						<Button disabled={saving} loading={saving} type="submit">
+						<Button
+							aria-describedby={
+								formError ? "meeting-edit-form-error" : undefined
+							}
+							disabled={saving}
+							loading={saving}
+							type="submit"
+						>
 							Save changes
 						</Button>
 					</DialogFooter>
@@ -556,10 +618,10 @@ function ActionItemsList({
 		);
 	}
 	return (
-		<ul className="flex list-none flex-col gap-2 p-0">
+		<ul className="flex min-w-0 list-none flex-col gap-2 p-0">
 			{items.map((item) => (
-				<li key={item.id}>
-					<label className="flex cursor-pointer items-start gap-2.5 text-sm">
+				<li className="min-w-0" key={item.id}>
+					<label className="flex min-w-0 cursor-pointer items-start gap-2.5 text-sm">
 						<Checkbox
 							checked={item.completed}
 							className="mt-0.5"
@@ -568,7 +630,7 @@ function ActionItemsList({
 								onToggle(item.id, checked === true);
 							}}
 						/>
-						<span className="flex flex-col gap-0.5">
+						<span className="flex min-w-0 flex-col gap-0.5 break-words">
 							<span
 								className={
 									item.completed ? "text-muted-foreground line-through" : ""
@@ -577,7 +639,7 @@ function ActionItemsList({
 								{item.text}
 							</span>
 							{item.owner ? (
-								<span className="text-muted-foreground text-xs">
+								<span className="break-words text-muted-foreground text-xs">
 									Owner: {item.owner}
 								</span>
 							) : null}
@@ -724,7 +786,7 @@ function MeetingDetail(): React.ReactElement {
 
 	if (state.status === "loading") {
 		return (
-			<main className="container mx-auto w-full max-w-3xl px-4 py-6">
+			<main className="container mx-auto w-full min-w-0 max-w-3xl overflow-x-clip px-4 py-6">
 				<div
 					aria-label="Loading meeting"
 					className="flex flex-col gap-3"
@@ -747,7 +809,7 @@ function MeetingDetail(): React.ReactElement {
 
 	if (state.status === "not-found") {
 		return (
-			<main className="container mx-auto w-full max-w-3xl px-4 py-6">
+			<main className="container mx-auto w-full min-w-0 max-w-3xl overflow-x-clip px-4 py-6">
 				<Empty>
 					<EmptyHeader>
 						<EmptyMedia variant="icon">
@@ -780,7 +842,7 @@ function MeetingDetail(): React.ReactElement {
 
 	if (state.status === "error") {
 		return (
-			<main className="container mx-auto w-full max-w-3xl px-4 py-6">
+			<main className="container mx-auto w-full min-w-0 max-w-3xl overflow-x-clip px-4 py-6">
 				<Alert variant="error">
 					<CircleAlertIcon />
 					<AlertTitle>Could not load this meeting</AlertTitle>
@@ -824,18 +886,18 @@ function MeetingDetail(): React.ReactElement {
 	if (PROCESSING_STATUSES.has(meeting.status)) {
 		const progressValue = PROCESSING_PROGRESS[meeting.status] ?? 15;
 		return (
-			<main className="container mx-auto w-full max-w-3xl px-4 py-6">
+			<main className="container mx-auto w-full min-w-0 max-w-3xl overflow-x-clip px-4 py-6">
 				<section
 					aria-labelledby="meeting-title"
-					className="flex flex-col gap-4"
+					className="flex min-w-0 flex-col gap-4"
 				>
-					<CardFrame>
-						<CardFrameHeader>
+					<CardFrame className="min-w-0 overflow-x-clip">
+						<CardFrameHeader className="px-4 max-sm:grid-cols-1 max-sm:gap-2 sm:px-6">
 							{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h1 with the meeting title as content. */}
 							<CardFrameTitle id="meeting-title" render={<h1 />}>
 								{meeting.title}
 							</CardFrameTitle>
-							<CardFrameDescription>
+							<CardFrameDescription className="break-words">
 								{formatDate(meeting.occurredAt)} ·{" "}
 								{formatDuration(meeting.durationSeconds)}
 							</CardFrameDescription>
@@ -844,8 +906,8 @@ function MeetingDetail(): React.ReactElement {
 							</CardFrameAction>
 						</CardFrameHeader>
 						<Card>
-							<CardPanel>
-								<div className="flex flex-col gap-3">
+							<CardPanel className="min-w-0 p-4 sm:p-6">
+								<div className="flex min-w-0 flex-col gap-3">
 									<Progress value={progressValue}>
 										<div className="flex items-center justify-between gap-2">
 											<ProgressLabel>Processing {meeting.status}</ProgressLabel>
@@ -862,7 +924,7 @@ function MeetingDetail(): React.ReactElement {
 								</div>
 							</CardPanel>
 						</Card>
-						<CardFrameFooter className="border-t py-3">
+						<CardFrameFooter className="border-t px-4 py-3 sm:px-6">
 							<div className="flex w-full flex-wrap items-center justify-between gap-2">
 								<p className="text-muted-foreground text-xs">
 									Processing runs automatically. Reload to check for updates.
@@ -882,20 +944,23 @@ function MeetingDetail(): React.ReactElement {
 	const audioUrl = audioUrlFor(env.VITE_SERVER_URL, meeting.id);
 
 	return (
-		<main className="container mx-auto w-full max-w-3xl px-4 py-6">
-			<section aria-labelledby="meeting-title" className="flex flex-col gap-4">
-				<CardFrame>
-					<CardFrameHeader>
+		<main className="container mx-auto w-full min-w-0 max-w-3xl overflow-x-clip px-4 py-6">
+			<section
+				aria-labelledby="meeting-title"
+				className="flex min-w-0 flex-col gap-4"
+			>
+				<CardFrame className="min-w-0 overflow-x-clip">
+					<CardFrameHeader className="px-4 max-sm:grid-cols-1 max-sm:gap-2 sm:px-6">
 						{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h1 with the meeting title as content. */}
 						<CardFrameTitle id="meeting-title" render={<h1 />}>
 							{meeting.title}
 						</CardFrameTitle>
-						<CardFrameDescription>
+						<CardFrameDescription className="break-words">
 							{formatDate(meeting.occurredAt)} ·{" "}
 							{formatDuration(meeting.durationSeconds)}
 						</CardFrameDescription>
 						<CardFrameAction>
-							<div className="flex flex-wrap items-center gap-2">
+							<div className="flex min-w-0 flex-wrap items-center gap-2">
 								<MeetingStatusBadge status={meeting.status} />
 								<EditMeetingDialog
 									meeting={meeting}
@@ -905,7 +970,7 @@ function MeetingDetail(): React.ReactElement {
 							</div>
 						</CardFrameAction>
 					</CardFrameHeader>
-					<CardFrameFooter className="border-t py-3">
+					<CardFrameFooter className="border-t px-4 py-3 sm:px-6">
 						<p className="text-muted-foreground text-xs">
 							Audio, transcript, and notes are kept together on this page.
 						</p>
@@ -913,24 +978,32 @@ function MeetingDetail(): React.ReactElement {
 				</CardFrame>
 
 				{meeting.description ? (
-					<section aria-labelledby="meeting-description-heading">
+					<section
+						aria-labelledby="meeting-description-heading"
+						className="min-w-0"
+					>
 						<h2
 							className="mb-1 font-medium text-sm"
 							id="meeting-description-heading"
 						>
 							Description
 						</h2>
-						<p className="text-sm">{meeting.description}</p>
+						<p className="break-words text-sm">{meeting.description}</p>
 					</section>
 				) : null}
 
 				{meeting.audioAvailable ? (
-					<section aria-labelledby="meeting-audio-heading">
+					<section aria-labelledby="meeting-audio-heading" className="min-w-0">
 						<h2 className="mb-1 font-medium text-sm" id="meeting-audio-heading">
 							Audio
 						</h2>
 						{/* biome-ignore lint/a11y/useMediaCaption: the transcript section below is the text alternative for this recording. */}
-						<audio controls preload="metadata" src={audioUrl}>
+						<audio
+							className="w-full max-w-full"
+							controls
+							preload="metadata"
+							src={audioUrl}
+						>
 							Your browser does not support audio playback.
 						</audio>
 					</section>
@@ -938,9 +1011,9 @@ function MeetingDetail(): React.ReactElement {
 
 				<Separator className="my-4" />
 
-				<Tabs defaultValue="transcript">
-					<div className="border-b">
-						<TabsList variant="underline">
+				<Tabs className="min-w-0" defaultValue="transcript">
+					<div className="-mx-1 min-w-0 overflow-x-auto border-b px-1">
+						<TabsList className="w-max max-w-full" variant="underline">
 							<TabsTab value="transcript">
 								<FileTextIcon aria-hidden="true" />
 								Transcript
@@ -971,13 +1044,13 @@ function MeetingDetail(): React.ReactElement {
 							</TabsTab>
 						</TabsList>
 					</div>
-					<TabsPanel value="transcript">
+					<TabsPanel className="min-w-0" value="transcript">
 						<section
 							aria-labelledby="meeting-transcript-heading"
-							className="pt-2"
+							className="min-w-0 pt-2"
 						>
-							<CardFrame>
-								<CardFrameHeader>
+							<CardFrame className="min-w-0 overflow-x-clip">
+								<CardFrameHeader className="px-4 sm:px-6">
 									<CardFrameTitle
 										id="meeting-transcript-heading"
 										// biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h2 with the transcript title as content.
@@ -987,13 +1060,13 @@ function MeetingDetail(): React.ReactElement {
 									</CardFrameTitle>
 								</CardFrameHeader>
 								<Card>
-									<CardPanel>
-										<p className="whitespace-pre-wrap text-sm leading-relaxed">
+									<CardPanel className="min-w-0 p-4 sm:p-6">
+										<p className="min-w-0 whitespace-pre-wrap break-words text-sm leading-relaxed">
 											{meeting.transcript ?? "No transcript is available yet."}
 										</p>
 									</CardPanel>
 								</Card>
-								<CardFrameFooter className="border-t py-3">
+								<CardFrameFooter className="border-t px-4 py-3 sm:px-6">
 									<div className="flex gap-1 text-muted-foreground text-xs">
 										<CircleAlertIcon
 											aria-hidden="true"
@@ -1008,17 +1081,20 @@ function MeetingDetail(): React.ReactElement {
 							</CardFrame>
 						</section>
 					</TabsPanel>
-					<TabsPanel value="summary">
-						<section aria-labelledby="meeting-summary-heading" className="pt-2">
-							<CardFrame>
-								<CardFrameHeader>
+					<TabsPanel className="min-w-0" value="summary">
+						<section
+							aria-labelledby="meeting-summary-heading"
+							className="min-w-0 pt-2"
+						>
+							<CardFrame className="min-w-0 overflow-x-clip">
+								<CardFrameHeader className="px-4 sm:px-6">
 									{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h2 with the summary title as content. */}
 									<CardFrameTitle id="meeting-summary-heading" render={<h2 />}>
 										Summary
 									</CardFrameTitle>
 								</CardFrameHeader>
 								<Card>
-									<CardPanel>
+									<CardPanel className="min-w-0 break-words p-4 sm:p-6">
 										{meeting.summary ? (
 											<MeetingMarkdown text={meeting.summary} />
 										) : (
@@ -1026,7 +1102,7 @@ function MeetingDetail(): React.ReactElement {
 										)}
 									</CardPanel>
 								</Card>
-								<CardFrameFooter className="border-t py-3">
+								<CardFrameFooter className="border-t px-4 py-3 sm:px-6">
 									<div className="flex gap-1 text-muted-foreground text-xs">
 										<CircleAlertIcon
 											aria-hidden="true"
@@ -1041,13 +1117,13 @@ function MeetingDetail(): React.ReactElement {
 							</CardFrame>
 						</section>
 					</TabsPanel>
-					<TabsPanel value="takeaways">
+					<TabsPanel className="min-w-0" value="takeaways">
 						<section
 							aria-labelledby="meeting-takeaways-heading"
-							className="pt-2"
+							className="min-w-0 pt-2"
 						>
-							<CardFrame>
-								<CardFrameHeader>
+							<CardFrame className="min-w-0 overflow-x-clip">
+								<CardFrameHeader className="px-4 sm:px-6">
 									<CardFrameTitle
 										id="meeting-takeaways-heading"
 										// biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h2 with the takeaways title as content.
@@ -1060,11 +1136,14 @@ function MeetingDetail(): React.ReactElement {
 									</CardFrameAction>
 								</CardFrameHeader>
 								<Card>
-									<CardPanel>
+									<CardPanel className="min-w-0 p-4 sm:p-6">
 										{meeting.takeaways.length > 0 ? (
-											<ul className="flex list-none flex-col gap-3 p-0">
+											<ul className="flex min-w-0 list-none flex-col gap-3 break-words p-0">
 												{meeting.takeaways.map((takeaway, index) => (
-													<li key={`${String(index)}-${takeaway.slice(0, 32)}`}>
+													<li
+														className="min-w-0 break-words"
+														key={`${String(index)}-${takeaway.slice(0, 32)}`}
+													>
 														<MeetingMarkdown text={takeaway} />
 													</li>
 												))}
@@ -1076,7 +1155,7 @@ function MeetingDetail(): React.ReactElement {
 										)}
 									</CardPanel>
 								</Card>
-								<CardFrameFooter className="border-t py-3">
+								<CardFrameFooter className="border-t px-4 py-3 sm:px-6">
 									<div className="flex gap-1 text-muted-foreground text-xs">
 										<CircleAlertIcon
 											aria-hidden="true"
@@ -1088,10 +1167,13 @@ function MeetingDetail(): React.ReactElement {
 							</CardFrame>
 						</section>
 					</TabsPanel>
-					<TabsPanel value="actions">
-						<section aria-labelledby="meeting-actions-heading" className="pt-2">
-							<CardFrame>
-								<CardFrameHeader>
+					<TabsPanel className="min-w-0" value="actions">
+						<section
+							aria-labelledby="meeting-actions-heading"
+							className="min-w-0 pt-2"
+						>
+							<CardFrame className="min-w-0 overflow-x-clip">
+								<CardFrameHeader className="px-4 sm:px-6">
 									{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h2 with the action items title as content. */}
 									<CardFrameTitle id="meeting-actions-heading" render={<h2 />}>
 										Action items
@@ -1103,8 +1185,8 @@ function MeetingDetail(): React.ReactElement {
 									</CardFrameAction>
 								</CardFrameHeader>
 								<Card>
-									<CardPanel>
-										<div className="flex flex-col gap-3">
+									<CardPanel className="min-w-0 p-4 sm:p-6">
+										<div className="flex min-w-0 flex-col gap-3">
 											{togglingId ? (
 												<p
 													aria-live="polite"
@@ -1130,7 +1212,7 @@ function MeetingDetail(): React.ReactElement {
 										</div>
 									</CardPanel>
 								</Card>
-								<CardFrameFooter className="border-t py-3">
+								<CardFrameFooter className="border-t px-4 py-3 sm:px-6">
 									<div className="flex gap-1 text-muted-foreground text-xs">
 										<CircleAlertIcon
 											aria-hidden="true"
