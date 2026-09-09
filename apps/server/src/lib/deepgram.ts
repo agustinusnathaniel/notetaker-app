@@ -3,6 +3,8 @@ import { z } from "zod";
 
 export const DEEPGRAM_LISTEN_URL =
 	"https://api.deepgram.com/v1/listen?model=nova-3&language=en-US&smart_format=true&utterances=true&diarize_model=latest";
+// Diarization is enabled by diarize_model alone. Do not add diarize=true:
+// Deepgram rejects requests that set both, and diarize=true alone pins to v1.
 
 const DeepgramUtteranceSchema = z.object({
 	end: z.number(),
