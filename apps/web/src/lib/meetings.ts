@@ -176,9 +176,13 @@ export function mimeTypeForFilename(filename: string): string | null {
 	return EXTENSION_MIME_TYPES[extension] ?? null;
 }
 
+export function mimeEssence(mime: string): string {
+	return mime.split(";")[0]?.trim().toLowerCase() ?? "";
+}
+
 function effectiveAudioMimeType(file: File): string | null {
 	if (file.type) {
-		return file.type;
+		return mimeEssence(file.type);
 	}
 	return mimeTypeForFilename(file.name);
 }

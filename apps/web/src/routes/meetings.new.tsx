@@ -47,6 +47,7 @@ import { toast } from "sonner";
 import {
 	createMeeting,
 	type MeetingSource,
+	mimeEssence,
 	mimeTypeForFilename,
 	requestSummary,
 	requestTranscription,
@@ -149,7 +150,7 @@ function validateAudioFile(file: File): string | null {
 		return "Audio files must be 25 MiB or smaller.";
 	}
 	if (file.type) {
-		if (!ALLOWED_MIME_TYPES.has(file.type.toLowerCase())) {
+		if (!ALLOWED_MIME_TYPES.has(mimeEssence(file.type))) {
 			return "Unsupported audio type. Choose an MP3, WAV, M4A, OGG, OPUS, FLAC, AAC, or WebM file.";
 		}
 		return null;
@@ -232,11 +233,22 @@ function stopStreamTracks(stream: MediaStream | null): void {
 	}
 }
 
+function extensionForEssence(essence: string): string {
+	if (essence.includes("ogg")) {
+		return "ogg";
+	}
+	if (essence.includes("mp4")) {
+		return "m4a";
+	}
+	return "webm";
+}
+
 function buildRecordingFile(chunks: Blob[], mimeType: string): File {
-	const blob = new Blob(chunks, { type: mimeType });
-	const extension = mimeType.includes("ogg") ? "ogg" : "webm";
+	const essence = mimeEssence(mimeType) || "audio/webm";
+	const blob = new Blob(chunks, { type: essence });
+	const extension = extensionForEssence(essence);
 	return new File([blob], `recording-${String(Date.now())}.${extension}`, {
-		type: blob.type || mimeType,
+		type: essence,
 	});
 }
 
