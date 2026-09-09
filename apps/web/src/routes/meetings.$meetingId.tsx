@@ -1296,31 +1296,39 @@ function MeetingDetail(): React.ReactElement {
 				<Separator className="my-4" />
 
 				<Tabs className="min-w-0" defaultValue="transcript">
-					<div className="-mx-4 min-w-0 scroll-px-4 overflow-x-auto border-b px-4 py-0.5 [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]">
-						<TabsList
-							className="w-fit min-w-full"
-							size="sm"
-							variant="underline"
-						>
-							<TabsTab value="transcript">
-								<FileTextIcon aria-hidden="true" className="max-sm:hidden" />
-								Transcript
-							</TabsTab>
-							<TabsTab value="summary">
-								<ScrollTextIcon aria-hidden="true" className="max-sm:hidden" />
-								Summary
-							</TabsTab>
-							<TabsTab value="takeaways">
-								<ListChecksIcon aria-hidden="true" className="max-sm:hidden" />
-								Takeaways
-								<Badge variant="outline">{meeting.takeaways.length}</Badge>
-							</TabsTab>
-							<TabsTab value="actions">
-								<ListTodoIcon aria-hidden="true" className="max-sm:hidden" />
-								Actions
-								<Badge variant="outline">{meeting.actionItems.length}</Badge>
-							</TabsTab>
-						</TabsList>
+					<div className="sticky top-0 z-10 -mx-4 min-w-0 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+						<div className="min-w-0 scroll-px-4 overflow-x-auto py-0.5 [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]">
+							<TabsList
+								className="w-fit min-w-full"
+								size="sm"
+								variant="underline"
+							>
+								<TabsTab value="transcript">
+									<FileTextIcon aria-hidden="true" className="max-sm:hidden" />
+									Transcript
+								</TabsTab>
+								<TabsTab value="summary">
+									<ScrollTextIcon
+										aria-hidden="true"
+										className="max-sm:hidden"
+									/>
+									Summary
+								</TabsTab>
+								<TabsTab value="takeaways">
+									<ListChecksIcon
+										aria-hidden="true"
+										className="max-sm:hidden"
+									/>
+									Takeaways
+									<Badge variant="outline">{meeting.takeaways.length}</Badge>
+								</TabsTab>
+								<TabsTab value="actions">
+									<ListTodoIcon aria-hidden="true" className="max-sm:hidden" />
+									Actions
+									<Badge variant="outline">{meeting.actionItems.length}</Badge>
+								</TabsTab>
+							</TabsList>
+						</div>
 					</div>
 					<TabsPanel className="min-w-0" value="transcript">
 						<section
