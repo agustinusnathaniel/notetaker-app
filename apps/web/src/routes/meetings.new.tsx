@@ -1,14 +1,39 @@
+import {
+	Alert,
+	AlertDescription,
+	AlertTitle,
+} from "@notetaker-app/ui/components/alert";
 import { Button } from "@notetaker-app/ui/components/button";
 import {
 	Card,
-	CardDescription,
-	CardHeader,
+	CardFrame,
+	CardFrameDescription,
+	CardFrameFooter,
+	CardFrameHeader,
+	CardFrameTitle,
 	CardPanel,
-	CardTitle,
 } from "@notetaker-app/ui/components/card";
+import {
+	Field,
+	FieldDescription,
+	FieldError,
+	FieldLabel,
+} from "@notetaker-app/ui/components/field";
 import { Input } from "@notetaker-app/ui/components/input";
-import { Label } from "@notetaker-app/ui/components/label";
+import {
+	Progress,
+	ProgressIndicator,
+	ProgressLabel,
+	ProgressTrack,
+	ProgressValue,
+} from "@notetaker-app/ui/components/progress";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@notetaker-app/ui/components/tooltip";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { ChevronLeftIcon, CircleAlertIcon, InfoIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -71,6 +96,15 @@ const STAGE_LABELS: Record<UploadStage, string> = {
 	summarizing: "Summarizing",
 	transcribing: "Transcribing",
 	uploading: "Uploading audio",
+};
+
+const STAGE_PROGRESS: Record<Exclude<UploadStage, "failed">, number> = {
+	completed: 100,
+	creating: 15,
+	idle: 0,
+	summarizing: 90,
+	transcribing: 70,
+	uploading: 40,
 };
 
 function extensionFor(filename: string): string {
@@ -257,12 +291,9 @@ function NewMeeting(): React.ReactElement {
 		[runUpload]
 	);
 
-	const handleRetry = useCallback((): void => {
-		runUpload().catch(() => undefined);
-	}, [runUpload]);
-
 	const isSubmitting = isSubmittingStage(stage);
 	const describedBy = fieldError ? "audio-file-error" : undefined;
+	const progressValue = stage === "failed" ? undefined : STAGE_PROGRESS[stage];
 
 	return (
 		<main className="container mx-auto w-full max-w-3xl px-4 py-6">
@@ -274,87 +305,113 @@ function NewMeeting(): React.ReactElement {
 					<h1 className="font-semibold text-xl" id="new-meeting-title">
 						New meeting
 					</h1>
-					<Button render={<Link to="/" />} variant="ghost">
+					<Button render={<Link to="/" />} variant="link">
+						<ChevronLeftIcon aria-hidden="true" />
 						Back Home
 					</Button>
 				</div>
 
-				<Card>
-					<CardHeader>
-						{/* biome-ignore lint/a11y/useHeadingContent: CardTitle renders an h2 with the upload title as content. */}
-						<CardTitle render={<h2 />}>Upload audio</CardTitle>
-						<CardDescription>
+				<CardFrame>
+					<CardFrameHeader>
+						{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h2 with the upload title as content. */}
+						<CardFrameTitle render={<h2 />}>Upload audio</CardFrameTitle>
+						<CardFrameDescription>
 							Upload an audio file up to 25 MiB. Notes generate automatically,
 							then you return to the meeting detail page. If you leave, retry
 							from the meeting detail page.
-						</CardDescription>
-					</CardHeader>
-					<CardPanel>
-						<form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-							<div className="flex flex-col gap-2">
-								<Label htmlFor="audio-file">Audio file</Label>
-								<Input
-									accept={ACCEPT_VALUE}
-									aria-describedby={describedBy}
-									aria-invalid={fieldError ? true : undefined}
-									disabled={isSubmitting}
-									id="audio-file"
-									onChange={handleFileChange}
-									type="file"
-								/>
-								{fieldError ? (
-									<p
-										className="text-destructive text-sm"
-										id="audio-file-error"
-										role="alert"
-									>
-										{fieldError}
-									</p>
-								) : null}
-								{fileName ? (
-									<p className="text-muted-foreground text-sm">
-										Selected: {fileName}
-										{durationSeconds > 0
-											? ` · about ${String(durationSeconds)}s`
-											: null}
-									</p>
-								) : null}
-							</div>
-
-							<p aria-live="polite" className="text-sm" role="status">
-								Status: {STAGE_LABELS[stage]}
-							</p>
-
-							{failure ? (
-								<p className="text-destructive text-sm" role="alert">
-									{failure}
-								</p>
-							) : null}
-
-							<div className="flex flex-wrap gap-2">
-								<Button
-									disabled={isSubmitting}
-									loading={isSubmitting}
-									type="submit"
-								>
-									{stage === "failed"
-										? "Retry upload"
-										: "Upload and generate notes"}
-								</Button>
-								{stage === "failed" ? (
-									<Button
+						</CardFrameDescription>
+					</CardFrameHeader>
+					<Card>
+						<CardPanel>
+							<form
+								className="flex flex-col gap-4"
+								id="audio-upload-form"
+								onSubmit={handleSubmit}
+							>
+								<Field invalid={!!fieldError}>
+									<div className="flex items-center gap-1.5">
+										<FieldLabel htmlFor="audio-file">Audio file</FieldLabel>
+										<Tooltip>
+											<TooltipTrigger
+												aria-label="Audio file size limit"
+												className="inline-flex items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+												render={<button type="button" />}
+											>
+												<InfoIcon aria-hidden="true" className="size-3.5" />
+											</TooltipTrigger>
+											<TooltipContent>25 MiB max</TooltipContent>
+										</Tooltip>
+									</div>
+									<Input
+										accept={ACCEPT_VALUE}
+										aria-describedby={describedBy}
+										aria-invalid={fieldError ? true : undefined}
 										disabled={isSubmitting}
-										onClick={handleRetry}
-										type="button"
-										variant="outline"
-									>
-										Retry
-									</Button>
+										id="audio-file"
+										onChange={handleFileChange}
+										type="file"
+									/>
+									{fieldError ? (
+										<FieldError id="audio-file-error" match={true}>
+											{fieldError}
+										</FieldError>
+									) : null}
+									<FieldDescription>
+										Upload an MP3, WAV, M4A, OGG, OPUS, FLAC, AAC, or WebM file
+										up to 25 MiB.
+									</FieldDescription>
+									{fileName ? (
+										<FieldDescription>
+											Selected: {fileName}
+											{durationSeconds > 0
+												? ` · about ${String(durationSeconds)}s`
+												: null}
+										</FieldDescription>
+									) : null}
+								</Field>
+
+								{progressValue === undefined ? null : (
+									<Progress value={progressValue}>
+										<div className="flex items-center justify-between gap-2">
+											<ProgressLabel>
+												Status: {STAGE_LABELS[stage]}
+											</ProgressLabel>
+											<ProgressValue />
+										</div>
+										<ProgressTrack>
+											<ProgressIndicator />
+										</ProgressTrack>
+									</Progress>
+								)}
+
+								{failure ? (
+									<Alert variant="error">
+										<CircleAlertIcon />
+										<AlertTitle>Upload failed</AlertTitle>
+										<AlertDescription>{failure}</AlertDescription>
+									</Alert>
 								) : null}
-							</div>
-						</form>
-					</CardPanel>
-				</Card>
+							</form>
+						</CardPanel>
+					</Card>
+					<CardFrameFooter className="border-t py-3">
+						<div className="inline-flex items-center gap-2">
+							<Button render={<Link to="/" />} variant="ghost">
+								Cancel
+							</Button>
+							<Button
+								disabled={isSubmitting}
+								form="audio-upload-form"
+								loading={isSubmitting}
+								type="submit"
+							>
+								{stage === "failed"
+									? "Retry upload"
+									: "Upload and generate notes"}
+							</Button>
+						</div>
+					</CardFrameFooter>
+				</CardFrame>
 			</section>
 		</main>
 	);
