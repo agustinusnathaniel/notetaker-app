@@ -326,6 +326,7 @@ function FailedMeetingView(props: FailedMeetingViewProps): React.ReactElement {
 								disabled={isRetrying}
 								meetingId={meeting.id}
 								onDeletingChange={handleDeletingChange}
+								title={meeting.title}
 							/>
 							<Button
 								className="max-sm:w-full"
@@ -559,15 +560,54 @@ function EditMeetingDialog({
 function DeleteMeetingDialog({
 	disabled = false,
 	meetingId,
+	title,
 	onDeletingChange,
 }: {
 	readonly disabled?: boolean;
 	readonly meetingId: string;
 	readonly onDeletingChange?: (deleting: boolean) => void;
+	readonly title?: string;
 }): React.ReactElement {
 	const navigate = useNavigate();
+	const [confirmOpen, setConfirmOpen] = useState<boolean>(false);
+	const [typeOpen, setTypeOpen] = useState<boolean>(false);
+	const [confirmText, setConfirmText] = useState<string>("");
 	const [error, setError] = useState<string | null>(null);
 	const [deleting, setDeleting] = useState<boolean>(false);
+	const confirmPhrase = title && title.length > 0 ? title : "delete";
+	// Strict equality on purpose: no trim or normalization, typed text must match exactly.
+	const valid = confirmText === confirmPhrase;
+
+	const handleContinue = useCallback((): void => {
+		setConfirmOpen(false);
+		setConfirmText("");
+		setError(null);
+		setTypeOpen(true);
+	}, []);
+
+	const handleTypeOpenChange = useCallback(
+		(next: boolean): void => {
+			if (deleting) {
+				return;
+			}
+			setTypeOpen(next);
+			if (!next) {
+				setConfirmText("");
+			}
+		},
+		[deleting]
+	);
+
+	const handleConfirmTextChange = useCallback(
+		(event: React.ChangeEvent<HTMLInputElement>): void => {
+			setConfirmText(event.target.value);
+		},
+		[]
+	);
+
+	const handleCancel = useCallback((): void => {
+		setConfirmText("");
+	}, []);
 
 	const handleConfirm = useCallback((): void => {
 		setError(null);
@@ -589,57 +629,101 @@ function DeleteMeetingDialog({
 	}, [meetingId, navigate, onDeletingChange]);
 
 	return (
-		<AlertDialog>
-			<AlertDialogTrigger
-				render={
-					<Button
-						className="max-sm:w-full"
-						disabled={disabled || deleting}
-						size="sm"
-						variant="destructive-outline"
-					>
-						<Trash2Icon aria-hidden="true" />
-						Delete
-					</Button>
-				}
-			/>
-			<AlertDialogPopup>
-				<AlertDialogHeader>
-					<AlertDialogTitle>Delete this meeting?</AlertDialogTitle>
-					<AlertDialogDescription>
-						This removes the meeting, its audio, transcript, and notes. This
-						action cannot be undone.
-					</AlertDialogDescription>
-				</AlertDialogHeader>
-				{error ? (
-					<div className="px-6">
-						<Alert variant="error">
-							<CircleAlertIcon />
-							<AlertTitle>Delete failed</AlertTitle>
-							<AlertDescription>{error}</AlertDescription>
-						</Alert>
-					</div>
-				) : null}
-				<AlertDialogFooter>
-					<AlertDialogClose
-						render={
-							<Button type="button" variant="ghost">
-								Cancel
-							</Button>
-						}
-					/>
-					<Button
-						disabled={deleting}
-						loading={deleting}
-						onClick={handleConfirm}
-						type="button"
-						variant="destructive"
-					>
-						Delete meeting
-					</Button>
-				</AlertDialogFooter>
-			</AlertDialogPopup>
-		</AlertDialog>
+		<>
+			<AlertDialog onOpenChange={setConfirmOpen} open={confirmOpen}>
+				<AlertDialogTrigger
+					render={
+						<Button
+							className="max-sm:w-full"
+							disabled={disabled || deleting}
+							size="sm"
+							variant="destructive-outline"
+						>
+							<Trash2Icon aria-hidden="true" />
+							Delete
+						</Button>
+					}
+				/>
+				<AlertDialogPopup>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Delete this meeting?</AlertDialogTitle>
+						<AlertDialogDescription>
+							This removes the meeting, its audio, transcript, and notes. This
+							action cannot be undone.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogClose
+							render={
+								<Button type="button" variant="ghost">
+									Cancel
+								</Button>
+							}
+						/>
+						<Button
+							onClick={handleContinue}
+							type="button"
+							variant="destructive"
+						>
+							Continue
+						</Button>
+					</AlertDialogFooter>
+				</AlertDialogPopup>
+			</AlertDialog>
+			<Dialog onOpenChange={handleTypeOpenChange} open={typeOpen}>
+				<DialogPopup>
+					<DialogHeader>
+						<DialogTitle>Type to confirm</DialogTitle>
+						<DialogDescription>
+							This action is irreversible. To permanently delete this meeting,
+							type {confirmPhrase} below.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogPanel>
+						<div className="flex min-w-0 flex-col gap-4">
+							<Field>
+								<FieldLabel htmlFor="delete-meeting-confirm-input">
+									Confirmation
+								</FieldLabel>
+								<Input
+									aria-label={`Type ${confirmPhrase} to confirm`}
+									disabled={deleting}
+									id="delete-meeting-confirm-input"
+									onChange={handleConfirmTextChange}
+									placeholder={confirmPhrase}
+									value={confirmText}
+								/>
+							</Field>
+							{error ? (
+								<Alert variant="error">
+									<CircleAlertIcon />
+									<AlertTitle>Delete failed</AlertTitle>
+									<AlertDescription>{error}</AlertDescription>
+								</Alert>
+							) : null}
+						</div>
+					</DialogPanel>
+					<DialogFooter>
+						<DialogClose
+							render={
+								<Button onClick={handleCancel} type="button" variant="ghost">
+									Cancel
+								</Button>
+							}
+						/>
+						<Button
+							disabled={!valid || deleting}
+							loading={deleting}
+							onClick={handleConfirm}
+							type="button"
+							variant="destructive"
+						>
+							Delete meeting
+						</Button>
+					</DialogFooter>
+				</DialogPopup>
+			</Dialog>
+		</>
 	);
 }
 
@@ -712,6 +796,7 @@ function ProcessingMeetingView({
 								<DeleteMeetingDialog
 									meetingId={meeting.id}
 									onDeletingChange={handleDeletingChange}
+									title={meeting.title}
 								/>
 								<Button
 									className="max-sm:w-full"
@@ -1052,7 +1137,10 @@ function MeetingDetail(): React.ReactElement {
 									meeting={meeting}
 									onUpdated={handleMeetingUpdated}
 								/>
-								<DeleteMeetingDialog meetingId={meeting.id} />
+								<DeleteMeetingDialog
+									meetingId={meeting.id}
+									title={meeting.title}
+								/>
 							</div>
 							<p className="text-muted-foreground text-xs">
 								Audio, transcript, and notes are kept together on this page.
