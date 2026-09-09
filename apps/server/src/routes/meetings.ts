@@ -11,6 +11,11 @@ import { Effect } from "effect";
 import { Hono } from "hono";
 import { z } from "zod";
 
+import {
+	DEEPGRAM_LISTEN_URL,
+	normalizeDeepgramResponse,
+} from "../lib/deepgram";
+
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const UUID_PATTERN =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -61,6 +66,15 @@ interface AudioNotFound {
 	readonly _tag: "AudioNotFound";
 }
 
+interface InvalidStatus {
+	readonly _tag: "InvalidStatus";
+}
+
+interface TranscriptionUnavailable {
+	readonly _tag: "TranscriptionUnavailable";
+	readonly cause: unknown;
+}
+
 interface StorageFailure {
 	readonly _tag: "StorageFailure";
 	readonly cause: unknown;
@@ -75,8 +89,10 @@ type MeetingsError =
 	| InvalidBody
 	| InvalidContentLength
 	| InvalidMeetingId
+	| InvalidStatus
 	| MeetingNotFound
 	| StorageFailure
+	| TranscriptionUnavailable
 	| UnsupportedMediaType;
 
 interface HttpError {
@@ -90,9 +106,11 @@ interface HttpError {
 		| "audio_too_large"
 		| "invalid_audio_body"
 		| "audio_not_found"
+		| "conflict"
+		| "transcription_unavailable"
 		| "internal_error";
 	readonly message: string;
-	readonly status: 400 | 404 | 413 | 415 | 500;
+	readonly status: 400 | 404 | 409 | 413 | 415 | 500 | 502;
 }
 
 interface SuccessOutcome<TData> {
@@ -211,6 +229,14 @@ function invalidAudioBody(cause: unknown): InvalidAudioBody {
 
 function audioNotFound(): AudioNotFound {
 	return { _tag: "AudioNotFound" };
+}
+
+function invalidStatus(): InvalidStatus {
+	return { _tag: "InvalidStatus" };
+}
+
+function transcriptionUnavailable(cause: unknown): TranscriptionUnavailable {
+	return { _tag: "TranscriptionUnavailable", cause };
 }
 
 function storageFailure(
@@ -356,6 +382,198 @@ function markUploadFailed(meetingId: string): Effect.Effect<void, never> {
 		},
 		catch: (): unknown => null,
 	}).pipe(Effect.ignore);
+}
+
+function markTranscriptionFailed(
+	meetingId: string
+): Effect.Effect<void, never> {
+	return Effect.tryPromise({
+		try: async (): Promise<void> => {
+			const db = createDb();
+			await db
+				.update(meetings)
+				.set({
+					failedStage: "transcription",
+					status: "failed",
+					updatedAt: new Date(),
+				})
+				.where(eq(meetings.id, meetingId));
+		},
+		catch: (): unknown => null,
+	}).pipe(Effect.ignore);
+}
+
+function canTranscribe(
+	status: Meeting["status"],
+	failedStage: Meeting["failedStage"]
+): boolean {
+	if (status === "uploading" || status === "transcribing") {
+		return true;
+	}
+
+	return status === "failed" && failedStage === "transcription";
+}
+
+interface TranscriptionContext {
+	readonly audio: ArrayBuffer;
+	readonly db: Db;
+	readonly meetingId: string;
+	readonly mimeType: string;
+}
+
+function runProviderAndPersist(
+	context: TranscriptionContext
+): Effect.Effect<
+	Outcome<PublicMeeting>,
+	StorageFailure | TranscriptionUnavailable
+> {
+	return Effect.gen(function* () {
+		const apiKey = env.DEEPGRAM_API_KEY;
+		if (typeof apiKey !== "string" || apiKey.length === 0) {
+			return yield* Effect.fail(
+				transcriptionUnavailable("Deepgram API key is not configured.")
+			);
+		}
+
+		const response = yield* Effect.tryPromise({
+			try: (signal) =>
+				fetch(DEEPGRAM_LISTEN_URL, {
+					body: context.audio,
+					headers: {
+						Authorization: `Token ${apiKey}`,
+						"Content-Type": context.mimeType,
+					},
+					method: "POST",
+					signal,
+				}),
+			catch: transcriptionUnavailable,
+		});
+		if (!response.ok) {
+			return yield* Effect.fail(
+				transcriptionUnavailable(
+					`Deepgram request failed with status ${response.status}.`
+				)
+			);
+		}
+
+		const payload: unknown = yield* Effect.tryPromise({
+			try: () => response.json(),
+			catch: transcriptionUnavailable,
+		});
+		const normalized = normalizeDeepgramResponse(payload);
+		if (!normalized) {
+			return yield* Effect.fail(
+				transcriptionUnavailable("Deepgram returned an unusable transcript.")
+			);
+		}
+
+		const rows = yield* Effect.tryPromise({
+			try: () =>
+				context.db
+					.update(meetings)
+					.set({
+						failedStage: null,
+						status: "summarizing",
+						transcript: normalized.transcript,
+						transcriptSegments: normalized.segments,
+						updatedAt: new Date(),
+					})
+					.where(eq(meetings.id, context.meetingId))
+					.returning(),
+			catch: (cause): StorageFailure =>
+				storageFailure(cause, context.meetingId),
+		});
+
+		const [persisted] = rows;
+		if (!persisted) {
+			return yield* Effect.fail(
+				transcriptionUnavailable(
+					"The meeting disappeared during transcription."
+				)
+			);
+		}
+
+		return { data: toPublicMeeting(persisted), kind: "success" } as const;
+	});
+}
+
+function transcribeMeeting(
+	meetingIdParam: string
+): Effect.Effect<Outcome<PublicMeeting>, never> {
+	const program = Effect.gen(function* () {
+		const meetingId = yield* parseMeetingId(meetingIdParam);
+		const db = yield* makeDb();
+		const row = yield* findMeetingById(db, meetingId);
+		if (!row.audioKey) {
+			return yield* Effect.fail(audioNotFound());
+		}
+		if (!canTranscribe(row.status, row.failedStage)) {
+			return yield* Effect.fail(invalidStatus());
+		}
+
+		const stored = yield* Effect.tryPromise({
+			try: () => env.AUDIO_BUCKET.get(row.audioKey as string),
+			catch: (cause): StorageFailure => storageFailure(cause, meetingId),
+		});
+		if (!stored) {
+			return yield* Effect.fail(audioNotFound());
+		}
+		const mimeType =
+			row.audioMimeType ??
+			stored.httpMetadata?.contentType ??
+			"application/octet-stream";
+		const audio = yield* Effect.tryPromise({
+			try: () => stored.arrayBuffer(),
+			catch: (cause): StorageFailure => storageFailure(cause, meetingId),
+		});
+		const marked = yield* Effect.tryPromise({
+			try: () =>
+				db
+					.update(meetings)
+					.set({
+						failedStage: null,
+						status: "transcribing",
+						updatedAt: new Date(),
+					})
+					.where(eq(meetings.id, meetingId))
+					.returning(),
+			catch: (cause): StorageFailure => storageFailure(cause, meetingId),
+		});
+
+		const [current] = marked;
+		if (!current) {
+			return yield* Effect.fail(meetingNotFound());
+		}
+
+		return yield* runProviderAndPersist({
+			audio,
+			db,
+			meetingId,
+			mimeType,
+		}).pipe(
+			Effect.catch((error: StorageFailure | TranscriptionUnavailable) =>
+				Effect.gen(function* () {
+					yield* markTranscriptionFailed(meetingId);
+					return { error: toHttpError(error), kind: "error" } as const;
+				})
+			)
+		);
+	});
+
+	return program.pipe(
+		Effect.catchTags({
+			InvalidMeetingId: (error) =>
+				Effect.succeed({ error: toHttpError(error), kind: "error" } as const),
+			MeetingNotFound: (error) =>
+				Effect.succeed({ error: toHttpError(error), kind: "error" } as const),
+			AudioNotFound: (error) =>
+				Effect.succeed({ error: toHttpError(error), kind: "error" } as const),
+			InvalidStatus: (error) =>
+				Effect.succeed({ error: toHttpError(error), kind: "error" } as const),
+			StorageFailure: (error) =>
+				Effect.succeed({ error: toHttpError(error), kind: "error" } as const),
+		})
+	);
 }
 
 async function cancelAudioReader(
@@ -536,6 +754,18 @@ function toHttpError(error: MeetingsError): HttpError {
 				code: "audio_not_found",
 				message: "No audio is stored for this meeting.",
 				status: 404,
+			};
+		case "InvalidStatus":
+			return {
+				code: "conflict",
+				message: "The meeting cannot be transcribed in its current state.",
+				status: 409,
+			};
+		case "TranscriptionUnavailable":
+			return {
+				code: "transcription_unavailable",
+				message: "Transcription is temporarily unavailable.",
+				status: 502,
 			};
 		case "StorageFailure":
 			return {
@@ -827,6 +1057,35 @@ meetingsRouter.put("/api/meetings/:meetingId/audio", async (c) => {
 				c.req.header("content-length"),
 				c.req.raw.body
 			),
+			{ signal: c.req.raw.signal }
+		);
+	} catch (error) {
+		if (
+			c.req.raw.signal.aborted &&
+			error instanceof Error &&
+			error.message === EFFECT_INTERRUPTION_MESSAGE
+		) {
+			return new Response(null, { status: 499 });
+		}
+
+		throw error;
+	}
+
+	if (outcome.kind === "error") {
+		return c.json(
+			{ error: { code: outcome.error.code, message: outcome.error.message } },
+			outcome.error.status
+		);
+	}
+
+	return c.json({ meeting: outcome.data });
+});
+
+meetingsRouter.post("/api/meetings/:meetingId/transcription", async (c) => {
+	let outcome: Outcome<PublicMeeting>;
+	try {
+		outcome = await Effect.runPromise(
+			transcribeMeeting(c.req.param("meetingId")),
 			{ signal: c.req.raw.signal }
 		);
 	} catch (error) {
