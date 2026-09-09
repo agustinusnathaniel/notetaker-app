@@ -33,11 +33,21 @@ import {
 	TooltipTrigger,
 } from "@notetaker-app/ui/components/tooltip";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ChevronLeftIcon, CircleAlertIcon, InfoIcon } from "lucide-react";
+import {
+	CheckIcon,
+	ChevronLeftIcon,
+	CircleAlertIcon,
+	InfoIcon,
+	MicIcon,
+	SquareIcon,
+	Trash2Icon,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
 	createMeeting,
+	type MeetingSource,
+	mimeEssence,
 	mimeTypeForFilename,
 	requestSummary,
 	requestTranscription,
@@ -50,6 +60,26 @@ export const Route = createFileRoute("/meetings/new")({
 
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const ACCEPT_VALUE = ".mp3,.wav,.m4a,.ogg,.oga,.opus,.flac,.aac,.webm";
+
+const RECORD_MIME_CANDIDATES: readonly string[] = [
+	"audio/webm;codecs=opus",
+	"audio/webm",
+	"audio/ogg;codecs=opus",
+];
+
+type AudioSourceTab = "upload" | "record";
+
+const SOURCE_TITLES: Record<AudioSourceTab, string> = {
+	record: "Record audio",
+	upload: "Upload audio",
+};
+
+const SOURCE_DESCRIPTIONS: Record<AudioSourceTab, string> = {
+	record:
+		"Record audio with your microphone, then generate notes automatically.",
+	upload:
+		"Upload an audio file up to 25 MiB. Notes generate automatically, then you return to the meeting detail page. If you leave, retry from the meeting detail page.",
+};
 
 const ALLOWED_MIME_TYPES: ReadonlySet<string> = new Set([
 	"audio/aac",
@@ -120,7 +150,7 @@ function validateAudioFile(file: File): string | null {
 		return "Audio files must be 25 MiB or smaller.";
 	}
 	if (file.type) {
-		if (!ALLOWED_MIME_TYPES.has(file.type.toLowerCase())) {
+		if (!ALLOWED_MIME_TYPES.has(mimeEssence(file.type))) {
 			return "Unsupported audio type. Choose an MP3, WAV, M4A, OGG, OPUS, FLAC, AAC, or WebM file.";
 		}
 		return null;
@@ -145,14 +175,288 @@ function isSubmittingStage(stage: UploadStage): boolean {
 	);
 }
 
+function pickRecordingMimeType(): string | undefined {
+	if (
+		typeof MediaRecorder === "undefined" ||
+		typeof MediaRecorder.isTypeSupported !== "function"
+	) {
+		return undefined;
+	}
+	for (const candidate of RECORD_MIME_CANDIDATES) {
+		try {
+			if (MediaRecorder.isTypeSupported(candidate)) {
+				return candidate;
+			}
+		} catch {
+			// Ignore unsupported MIME probes and try the next candidate.
+		}
+	}
+	return undefined;
+}
+
+function formatRecordingTime(totalSeconds: number): string {
+	const minutes = Math.floor(totalSeconds / 60);
+	const seconds = totalSeconds % 60;
+	return `${String(minutes)}:${String(seconds).padStart(2, "0")}`;
+}
+
+function microphoneErrorMessage(error: unknown): string {
+	const name =
+		error instanceof DOMException || error instanceof Error ? error.name : "";
+	if (name === "NotAllowedError") {
+		return "Microphone access was denied. Allow microphone access or upload a file instead.";
+	}
+	if (name === "NotFoundError") {
+		return "No microphone was found. Connect a microphone or upload a file instead.";
+	}
+	if (name === "NotReadableError" || name === "AbortError") {
+		return "Could not start recording with this microphone. Try again or upload a file instead.";
+	}
+	if (name === "SecurityError") {
+		return "Recording is blocked in this context. Upload a file instead.";
+	}
+	return "Could not start recording. Try again or upload a file instead.";
+}
+
+function submitErrorMessage(error: unknown): string {
+	if (error instanceof Error) {
+		return error.message;
+	}
+	return "Something went wrong. Please try again.";
+}
+
+function stopStreamTracks(stream: MediaStream | null): void {
+	if (stream) {
+		for (const track of stream.getTracks()) {
+			track.stop();
+		}
+	}
+}
+
+function extensionForEssence(essence: string): string {
+	if (essence.includes("ogg")) {
+		return "ogg";
+	}
+	if (essence.includes("mp4")) {
+		return "m4a";
+	}
+	return "webm";
+}
+
+function buildRecordingFile(chunks: Blob[], mimeType: string): File {
+	const essence = mimeEssence(mimeType) || "audio/webm";
+	const blob = new Blob(chunks, { type: essence });
+	const extension = extensionForEssence(essence);
+	return new File([blob], `recording-${String(Date.now())}.${extension}`, {
+		type: essence,
+	});
+}
+
+function nextAbortController(reference: {
+	current: AbortController | null;
+}): AbortController {
+	reference.current?.abort();
+	const controller = new AbortController();
+	reference.current = controller;
+	return controller;
+}
+
+interface RecordingReady {
+	elapsedSeconds: number;
+	file: File;
+}
+
+interface AudioRecorder {
+	discardRecording: () => void;
+	isRecording: boolean;
+	pendingRecording: File | null;
+	recordError: string | null;
+	recordedUrl: string | null;
+	recordingSeconds: number;
+	startRecording: () => Promise<void>;
+	stopRecording: () => void;
+}
+
+function useAudioRecorder(options: {
+	onRecordingReady: (ready: RecordingReady) => void;
+}): AudioRecorder {
+	const { onRecordingReady } = options;
+	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+	const streamRef = useRef<MediaStream | null>(null);
+	const chunksRef = useRef<Blob[]>([]);
+	const timerRef = useRef<number | null>(null);
+	const recordedUrlRef = useRef<string | null>(null);
+	const recordingSecondsRef = useRef<number>(0);
+	const [isRecording, setIsRecording] = useState<boolean>(false);
+	const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
+	const [recordedUrl, setRecordedUrl] = useState<string | null>(null);
+	const [recordError, setRecordError] = useState<string | null>(null);
+	const [pendingRecording, setPendingRecording] = useState<File | null>(null);
+
+	const revokeRecordedUrl = useCallback((): void => {
+		const { current }: { current: string | null } = recordedUrlRef;
+		if (current) {
+			URL.revokeObjectURL(current);
+			recordedUrlRef.current = null;
+		}
+	}, []);
+
+	const stopMediaTracks = useCallback((): void => {
+		stopStreamTracks(streamRef.current);
+		streamRef.current = null;
+	}, []);
+
+	const stopTimer = useCallback((): void => {
+		if (timerRef.current !== null) {
+			window.clearInterval(timerRef.current);
+			timerRef.current = null;
+		}
+	}, []);
+
+	useEffect(
+		() => () => {
+			stopTimer();
+			revokeRecordedUrl();
+			const recorder: MediaRecorder | null = mediaRecorderRef.current;
+			mediaRecorderRef.current = null;
+			if (recorder && recorder.state !== "inactive") {
+				try {
+					recorder.stop();
+				} catch {
+					// Ignore stop errors during unmount.
+				}
+			}
+			stopStreamTracks(streamRef.current);
+			streamRef.current = null;
+		},
+		[revokeRecordedUrl, stopTimer]
+	);
+
+	const startRecording = useCallback(async (): Promise<void> => {
+		if (isRecording) {
+			return;
+		}
+		setRecordError(null);
+		if (
+			typeof MediaRecorder === "undefined" ||
+			typeof navigator === "undefined" ||
+			!navigator.mediaDevices?.getUserMedia
+		) {
+			setRecordError(
+				"Recording is not available in this browser. Upload a file instead."
+			);
+			return;
+		}
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			streamRef.current = stream;
+			chunksRef.current = [];
+			const mimeType = pickRecordingMimeType();
+			const recorder = mimeType
+				? new MediaRecorder(stream, { mimeType })
+				: new MediaRecorder(stream);
+			mediaRecorderRef.current = recorder;
+			recordingSecondsRef.current = 0;
+			setRecordingSeconds(0);
+			recorder.ondataavailable = (event: BlobEvent): void => {
+				if (event.data.size > 0) {
+					chunksRef.current.push(event.data);
+				}
+			};
+			recorder.onstop = (): void => {
+				if (mediaRecorderRef.current !== recorder) {
+					return;
+				}
+				mediaRecorderRef.current = null;
+				const file = buildRecordingFile(
+					chunksRef.current,
+					recorder.mimeType || "audio/webm"
+				);
+				setPendingRecording(file);
+				revokeRecordedUrl();
+				const url = URL.createObjectURL(file);
+				recordedUrlRef.current = url;
+				setRecordedUrl(url);
+				onRecordingReady({
+					elapsedSeconds: recordingSecondsRef.current,
+					file,
+				});
+				stopMediaTracks();
+			};
+			recorder.start();
+			setIsRecording(true);
+			stopTimer();
+			timerRef.current = window.setInterval(() => {
+				recordingSecondsRef.current += 1;
+				setRecordingSeconds(recordingSecondsRef.current);
+			}, 1000);
+		} catch (error: unknown) {
+			stopMediaTracks();
+			mediaRecorderRef.current = null;
+			setRecordError(microphoneErrorMessage(error));
+		}
+	}, [
+		isRecording,
+		onRecordingReady,
+		revokeRecordedUrl,
+		stopMediaTracks,
+		stopTimer,
+	]);
+
+	const stopRecording = useCallback((): void => {
+		const recorder: MediaRecorder | null = mediaRecorderRef.current;
+		setIsRecording(false);
+		stopTimer();
+		if (recorder && recorder.state !== "inactive") {
+			try {
+				recorder.stop();
+			} catch {
+				setRecordError(
+					"Could not finish the recording. Try again or upload a file instead."
+				);
+				stopMediaTracks();
+				mediaRecorderRef.current = null;
+			}
+		} else {
+			stopMediaTracks();
+		}
+	}, [stopMediaTracks, stopTimer]);
+
+	const discardRecording = useCallback((): void => {
+		setPendingRecording(null);
+		revokeRecordedUrl();
+		setRecordedUrl(null);
+		recordingSecondsRef.current = 0;
+		setRecordingSeconds(0);
+		setRecordError(null);
+	}, [revokeRecordedUrl]);
+
+	return {
+		discardRecording,
+		isRecording,
+		pendingRecording,
+		recordError,
+		recordedUrl,
+		recordingSeconds,
+		startRecording,
+		stopRecording,
+	};
+}
+
 async function advanceMeetingPipeline(
 	file: File,
 	durationSeconds: number,
 	signal: AbortSignal,
-	onStage: (stage: UploadStage) => void
+	onStage: (stage: UploadStage) => void,
+	source: MeetingSource = "upload"
 ): Promise<string> {
 	onStage("creating");
-	const meeting = await createMeeting(file.name, durationSeconds, signal);
+	const meeting = await createMeeting(
+		file.name,
+		durationSeconds,
+		signal,
+		source
+	);
 	onStage("uploading");
 	await uploadAudio(meeting.id, file, signal);
 	onStage("transcribing");
@@ -160,6 +464,238 @@ async function advanceMeetingPipeline(
 	onStage("summarizing");
 	await requestSummary(meeting.id, signal);
 	return meeting.id;
+}
+
+interface SourceToggleProps {
+	disabled: boolean;
+	onSelectRecord: () => void;
+	onSelectUpload: () => void;
+	value: AudioSourceTab;
+}
+
+function SourceToggle(props: SourceToggleProps): React.ReactElement {
+	const { disabled, onSelectRecord, onSelectUpload, value } = props;
+	return (
+		<fieldset className="flex gap-1">
+			<legend className="sr-only">Audio source</legend>
+			<Button
+				aria-pressed={value === "upload"}
+				disabled={disabled}
+				onClick={onSelectUpload}
+				type="button"
+				variant={value === "upload" ? "secondary" : "ghost"}
+			>
+				Upload
+			</Button>
+			<Button
+				aria-pressed={value === "record"}
+				disabled={disabled}
+				onClick={onSelectRecord}
+				type="button"
+				variant={value === "record" ? "secondary" : "ghost"}
+			>
+				Record
+			</Button>
+		</fieldset>
+	);
+}
+
+interface UploadPanelProps {
+	disabled: boolean;
+	durationSeconds: number;
+	fieldError: string | null;
+	fileName: string | null;
+	onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+}
+
+function UploadPanel(props: UploadPanelProps): React.ReactElement {
+	const { disabled, durationSeconds, fieldError, fileName, onFileChange } =
+		props;
+	const describedBy = fieldError ? "audio-file-error" : undefined;
+	return (
+		<Field invalid={!!fieldError}>
+			<div className="flex items-center gap-1.5">
+				<FieldLabel htmlFor="audio-file">Audio file</FieldLabel>
+				<Tooltip>
+					<TooltipTrigger
+						aria-label="Audio file size limit"
+						className="inline-flex items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+						render={<button type="button" />}
+					>
+						<InfoIcon aria-hidden="true" className="size-3.5" />
+					</TooltipTrigger>
+					<TooltipContent>25 MiB max</TooltipContent>
+				</Tooltip>
+			</div>
+			<Input
+				accept={ACCEPT_VALUE}
+				aria-describedby={describedBy}
+				aria-invalid={fieldError ? true : undefined}
+				disabled={disabled}
+				id="audio-file"
+				onChange={onFileChange}
+				type="file"
+			/>
+			{fieldError ? (
+				<FieldError id="audio-file-error" match={true}>
+					{fieldError}
+				</FieldError>
+			) : null}
+			<FieldDescription>
+				Upload an MP3, WAV, M4A, OGG, OPUS, FLAC, AAC, or WebM file up to 25
+				MiB.
+			</FieldDescription>
+			{fileName ? (
+				<FieldDescription>
+					Selected: {fileName}
+					{durationSeconds > 0 ? ` · about ${String(durationSeconds)}s` : null}
+				</FieldDescription>
+			) : null}
+		</Field>
+	);
+}
+
+interface RecordingPanelProps {
+	disabled: boolean;
+	durationSeconds: number;
+	fieldError: string | null;
+	fileName: string | null;
+	isRecordedFile: boolean;
+	isRecording: boolean;
+	onDiscard: () => void;
+	onRecordStart: () => void;
+	onRecordStop: () => void;
+	onUseRecording: () => void;
+	recordError: string | null;
+	recordedUrl: string | null;
+	recordingSeconds: number;
+}
+
+function RecordingPanel(props: RecordingPanelProps): React.ReactElement {
+	const {
+		disabled,
+		durationSeconds,
+		fieldError,
+		fileName,
+		isRecordedFile,
+		isRecording,
+		onDiscard,
+		onRecordStart,
+		onRecordStop,
+		onUseRecording,
+		recordError,
+		recordedUrl,
+		recordingSeconds,
+	} = props;
+	const showRecordButton = !(isRecording || recordedUrl);
+	const showTimer = isRecording || recordedUrl !== null;
+	const timerLabel = isRecording ? "Recording" : "Recorded";
+	const useLabel = isRecordedFile ? "Recording ready" : "Use recording";
+	return (
+		<Field invalid={!!fieldError}>
+			<FieldLabel htmlFor="record-button">Microphone recording</FieldLabel>
+			<div className="flex flex-wrap items-center gap-2">
+				{isRecording ? (
+					<Button onClick={onRecordStop} type="button" variant="destructive">
+						<SquareIcon aria-hidden="true" />
+						Stop
+					</Button>
+				) : null}
+				{showRecordButton ? (
+					<Button
+						disabled={disabled}
+						id="record-button"
+						onClick={onRecordStart}
+						type="button"
+					>
+						<MicIcon aria-hidden="true" />
+						Record
+					</Button>
+				) : null}
+				{showTimer ? (
+					<p aria-live="polite" className="text-muted-foreground text-sm">
+						{timerLabel} {formatRecordingTime(recordingSeconds)}
+					</p>
+				) : null}
+			</div>
+			{recordedUrl && !isRecording ? (
+				<div className="flex flex-col gap-2">
+					{/* biome-ignore lint/a11y/useMediaCaption: preview plays the user's just-recorded audio; a transcript is generated after upload. */}
+					<audio controls src={recordedUrl}>
+						Your browser does not support audio preview.
+					</audio>
+					<div className="flex flex-wrap items-center gap-2">
+						<Button onClick={onDiscard} type="button" variant="outline">
+							<Trash2Icon aria-hidden="true" />
+							Discard
+						</Button>
+						<Button
+							disabled={disabled || isRecordedFile}
+							onClick={onUseRecording}
+							type="button"
+						>
+							<CheckIcon aria-hidden="true" />
+							{useLabel}
+						</Button>
+					</div>
+				</div>
+			) : null}
+			{fieldError ? (
+				<FieldError id="recording-error" match={true}>
+					{fieldError}
+				</FieldError>
+			) : null}
+			<FieldDescription>
+				Recordings are stored as WebM or OGG up to 25 MiB. Prefer a file? Switch
+				to Upload instead.
+			</FieldDescription>
+			{fileName && isRecordedFile ? (
+				<FieldDescription>
+					Selected: {fileName}
+					{durationSeconds > 0 ? ` · about ${String(durationSeconds)}s` : null}
+				</FieldDescription>
+			) : null}
+			{recordError ? (
+				<Alert variant="error">
+					<CircleAlertIcon />
+					<AlertTitle>Recording unavailable</AlertTitle>
+					<AlertDescription>{recordError}</AlertDescription>
+				</Alert>
+			) : null}
+		</Field>
+	);
+}
+
+interface SubmissionStatusProps {
+	failure: string | null;
+	stage: UploadStage;
+}
+
+function SubmissionStatus(props: SubmissionStatusProps): React.ReactElement {
+	const { failure, stage } = props;
+	const progressValue = stage === "failed" ? undefined : STAGE_PROGRESS[stage];
+	return (
+		<>
+			{progressValue === undefined ? null : (
+				<Progress value={progressValue}>
+					<div className="flex items-center justify-between gap-2">
+						<ProgressLabel>Status: {STAGE_LABELS[stage]}</ProgressLabel>
+						<ProgressValue />
+					</div>
+					<ProgressTrack>
+						<ProgressIndicator />
+					</ProgressTrack>
+				</Progress>
+			)}
+			{failure ? (
+				<Alert variant="error">
+					<CircleAlertIcon />
+					<AlertTitle>Upload failed</AlertTitle>
+					<AlertDescription>{failure}</AlertDescription>
+				</Alert>
+			) : null}
+		</>
+	);
 }
 
 function NewMeeting(): React.ReactElement {
@@ -172,6 +708,9 @@ function NewMeeting(): React.ReactElement {
 	const [fieldError, setFieldError] = useState<string | null>(null);
 	const [failure, setFailure] = useState<string | null>(null);
 	const [stage, setStage] = useState<UploadStage>("idle");
+	const [audioSourceTab, setAudioSourceTab] =
+		useState<AudioSourceTab>("upload");
+	const [isRecordedFile, setIsRecordedFile] = useState<boolean>(false);
 
 	const revokeObjectUrl = useCallback((): void => {
 		const { current }: { current: string | null } = objectUrlRef;
@@ -212,12 +751,35 @@ function NewMeeting(): React.ReactElement {
 		[revokeObjectUrl]
 	);
 
+	const handleRecordingReady = useCallback(
+		(ready: RecordingReady): void => {
+			if (ready.elapsedSeconds > 0) {
+				setDurationSeconds(ready.elapsedSeconds);
+			} else {
+				probeDuration(ready.file);
+			}
+		},
+		[probeDuration]
+	);
+
+	const {
+		discardRecording,
+		isRecording,
+		pendingRecording,
+		recordedUrl,
+		recordError,
+		recordingSeconds,
+		startRecording,
+		stopRecording,
+	} = useAudioRecorder({ onRecordingReady: handleRecordingReady });
+
 	const handleFileChange = useCallback(
 		(event: React.ChangeEvent<HTMLInputElement>): void => {
 			const selected = event.target.files?.[0] ?? null;
 			fileRef.current = selected;
 			setFailure(null);
 			setStage("idle");
+			setIsRecordedFile(false);
 			if (!selected) {
 				setFileName(null);
 				setDurationSeconds(0);
@@ -233,7 +795,53 @@ function NewMeeting(): React.ReactElement {
 		[probeDuration, revokeObjectUrl]
 	);
 
+	const handleDiscardRecording = useCallback((): void => {
+		discardRecording();
+		if (isRecordedFile) {
+			fileRef.current = null;
+			setFileName(null);
+			setDurationSeconds(0);
+			setFieldError(null);
+			setIsRecordedFile(false);
+			revokeObjectUrl();
+		}
+		setStage("idle");
+		setFailure(null);
+	}, [discardRecording, isRecordedFile, revokeObjectUrl]);
+
+	const handleUseRecording = useCallback((): void => {
+		if (!pendingRecording) {
+			return;
+		}
+		const error = validateAudioFile(pendingRecording);
+		if (error) {
+			setFieldError(error);
+			return;
+		}
+		fileRef.current = pendingRecording;
+		setFileName(pendingRecording.name);
+		setFieldError(null);
+		setFailure(null);
+		setStage("idle");
+		setIsRecordedFile(true);
+	}, [pendingRecording]);
+
+	const handleSelectUploadTab = useCallback((): void => {
+		setAudioSourceTab("upload");
+	}, []);
+
+	const handleSelectRecordTab = useCallback((): void => {
+		setAudioSourceTab("record");
+	}, []);
+
+	const handleRecordClick = useCallback((): void => {
+		startRecording().catch(() => undefined);
+	}, [startRecording]);
+
 	const runUpload = useCallback(async (): Promise<void> => {
+		if (isRecording) {
+			return;
+		}
 		const file: File | null = fileRef.current;
 		if (!file) {
 			setFieldError("Please choose an audio file.");
@@ -244,13 +852,9 @@ function NewMeeting(): React.ReactElement {
 			setFieldError(validationError);
 			return;
 		}
-		const { current: inFlight }: { current: AbortController | null } = abortRef;
-		if (inFlight) {
-			inFlight.abort();
-		}
-		const controller = new AbortController();
-		abortRef.current = controller;
+		const controller = nextAbortController(abortRef);
 		const { signal } = controller;
+		const source: MeetingSource = isRecordedFile ? "recording" : "upload";
 		setFieldError(null);
 		setFailure(null);
 		try {
@@ -258,7 +862,8 @@ function NewMeeting(): React.ReactElement {
 				file,
 				durationSeconds,
 				signal,
-				setStage
+				setStage,
+				source
 			);
 			setStage("completed");
 			await navigate({
@@ -269,10 +874,7 @@ function NewMeeting(): React.ReactElement {
 			if (signal.aborted) {
 				return;
 			}
-			const message =
-				error instanceof Error
-					? error.message
-					: "Something went wrong. Please try again.";
+			const message = submitErrorMessage(error);
 			setFailure(message);
 			setStage("failed");
 			toast.error(message);
@@ -281,7 +883,7 @@ function NewMeeting(): React.ReactElement {
 				abortRef.current = null;
 			}
 		}
-	}, [durationSeconds, navigate]);
+	}, [durationSeconds, isRecordedFile, isRecording, navigate]);
 
 	const handleSubmit = useCallback(
 		(event: React.FormEvent<HTMLFormElement>): void => {
@@ -292,8 +894,9 @@ function NewMeeting(): React.ReactElement {
 	);
 
 	const isSubmitting = isSubmittingStage(stage);
-	const describedBy = fieldError ? "audio-file-error" : undefined;
-	const progressValue = stage === "failed" ? undefined : STAGE_PROGRESS[stage];
+	const controlsDisabled = isSubmitting || isRecording;
+	const submitLabel =
+		stage === "failed" ? "Retry upload" : "Upload and generate notes";
 
 	return (
 		<main className="container mx-auto w-full max-w-3xl px-4 py-6">
@@ -314,11 +917,11 @@ function NewMeeting(): React.ReactElement {
 				<CardFrame>
 					<CardFrameHeader>
 						{/* biome-ignore lint/a11y/useHeadingContent: CardFrameTitle renders an h2 with the upload title as content. */}
-						<CardFrameTitle render={<h2 />}>Upload audio</CardFrameTitle>
+						<CardFrameTitle render={<h2 />}>
+							{SOURCE_TITLES[audioSourceTab]}
+						</CardFrameTitle>
 						<CardFrameDescription>
-							Upload an audio file up to 25 MiB. Notes generate automatically,
-							then you return to the meeting detail page. If you leave, retry
-							from the meeting detail page.
+							{SOURCE_DESCRIPTIONS[audioSourceTab]}
 						</CardFrameDescription>
 					</CardFrameHeader>
 					<Card>
@@ -328,69 +931,40 @@ function NewMeeting(): React.ReactElement {
 								id="audio-upload-form"
 								onSubmit={handleSubmit}
 							>
-								<Field invalid={!!fieldError}>
-									<div className="flex items-center gap-1.5">
-										<FieldLabel htmlFor="audio-file">Audio file</FieldLabel>
-										<Tooltip>
-											<TooltipTrigger
-												aria-label="Audio file size limit"
-												className="inline-flex items-center justify-center rounded-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-												render={<button type="button" />}
-											>
-												<InfoIcon aria-hidden="true" className="size-3.5" />
-											</TooltipTrigger>
-											<TooltipContent>25 MiB max</TooltipContent>
-										</Tooltip>
-									</div>
-									<Input
-										accept={ACCEPT_VALUE}
-										aria-describedby={describedBy}
-										aria-invalid={fieldError ? true : undefined}
-										disabled={isSubmitting}
-										id="audio-file"
-										onChange={handleFileChange}
-										type="file"
-									/>
-									{fieldError ? (
-										<FieldError id="audio-file-error" match={true}>
-											{fieldError}
-										</FieldError>
-									) : null}
-									<FieldDescription>
-										Upload an MP3, WAV, M4A, OGG, OPUS, FLAC, AAC, or WebM file
-										up to 25 MiB.
-									</FieldDescription>
-									{fileName ? (
-										<FieldDescription>
-											Selected: {fileName}
-											{durationSeconds > 0
-												? ` · about ${String(durationSeconds)}s`
-												: null}
-										</FieldDescription>
-									) : null}
-								</Field>
+								<SourceToggle
+									disabled={controlsDisabled}
+									onSelectRecord={handleSelectRecordTab}
+									onSelectUpload={handleSelectUploadTab}
+									value={audioSourceTab}
+								/>
 
-								{progressValue === undefined ? null : (
-									<Progress value={progressValue}>
-										<div className="flex items-center justify-between gap-2">
-											<ProgressLabel>
-												Status: {STAGE_LABELS[stage]}
-											</ProgressLabel>
-											<ProgressValue />
-										</div>
-										<ProgressTrack>
-											<ProgressIndicator />
-										</ProgressTrack>
-									</Progress>
+								{audioSourceTab === "record" ? (
+									<RecordingPanel
+										disabled={isSubmitting}
+										durationSeconds={durationSeconds}
+										fieldError={fieldError}
+										fileName={fileName}
+										isRecordedFile={isRecordedFile}
+										isRecording={isRecording}
+										onDiscard={handleDiscardRecording}
+										onRecordStart={handleRecordClick}
+										onRecordStop={stopRecording}
+										onUseRecording={handleUseRecording}
+										recordError={recordError}
+										recordedUrl={recordedUrl}
+										recordingSeconds={recordingSeconds}
+									/>
+								) : (
+									<UploadPanel
+										disabled={isSubmitting}
+										durationSeconds={durationSeconds}
+										fieldError={fieldError}
+										fileName={fileName}
+										onFileChange={handleFileChange}
+									/>
 								)}
 
-								{failure ? (
-									<Alert variant="error">
-										<CircleAlertIcon />
-										<AlertTitle>Upload failed</AlertTitle>
-										<AlertDescription>{failure}</AlertDescription>
-									</Alert>
-								) : null}
+								<SubmissionStatus failure={failure} stage={stage} />
 							</form>
 						</CardPanel>
 					</Card>
@@ -400,14 +974,12 @@ function NewMeeting(): React.ReactElement {
 								Cancel
 							</Button>
 							<Button
-								disabled={isSubmitting}
+								disabled={controlsDisabled}
 								form="audio-upload-form"
 								loading={isSubmitting}
 								type="submit"
 							>
-								{stage === "failed"
-									? "Retry upload"
-									: "Upload and generate notes"}
+								{submitLabel}
 							</Button>
 						</div>
 					</CardFrameFooter>

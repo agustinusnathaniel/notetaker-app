@@ -176,23 +176,30 @@ export function mimeTypeForFilename(filename: string): string | null {
 	return EXTENSION_MIME_TYPES[extension] ?? null;
 }
 
+export function mimeEssence(mime: string): string {
+	return mime.split(";")[0]?.trim().toLowerCase() ?? "";
+}
+
 function effectiveAudioMimeType(file: File): string | null {
 	if (file.type) {
-		return file.type;
+		return mimeEssence(file.type);
 	}
 	return mimeTypeForFilename(file.name);
 }
 
+export type MeetingSource = "upload" | "recording" | "demo";
+
 export async function createMeeting(
 	filename: string,
 	durationSeconds: number,
-	signal?: AbortSignal
+	signal?: AbortSignal,
+	source: MeetingSource = "upload"
 ): Promise<PublicMeeting> {
 	const response = await fetch(`${env.VITE_SERVER_URL}/api/meetings`, {
 		body: JSON.stringify({
 			durationSeconds,
 			filename,
-			source: "upload",
+			source,
 		}),
 		headers: { "Content-Type": "application/json" },
 		method: "POST",
