@@ -22,6 +22,7 @@
     "db:generate": "vp run --filter @notetaker-app/db db:generate",
     "db:migrate": "vp run --filter @notetaker-app/db db:migrate",
     "deploy": "vp run --filter @notetaker-app/infra deploy",
+    "deploy:prod": "./scripts/deploy-prod.sh",
     "destroy": "vp run --filter @notetaker-app/infra destroy",
     "infra:login": "pnpm --filter @notetaker-app/infra exec alchemy login --configure",
     "fix": "ultracite fix"

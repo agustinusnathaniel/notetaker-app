@@ -120,16 +120,43 @@ Open [http://localhost:3001](http://localhost:3001) for the web app. The API ser
 
 `alchemy login --configure` stores the selected Cloudflare, Neon, PlanetScale, and/or Prisma provider profiles under `~/.alchemy`; no provider-specific setup command is required by this scaffold.
 
-Deploys are staged and default to a personal `dev_<username>` stage. For production, run the deploy with an explicit stage from `packages/infra`:
+Deploys are staged and default to a personal `dev_<username>` stage. The canonical production stage is `prod` (the older `production` name is retired, do not use it):
 
 ```bash
-cd packages/infra && pnpm exec alchemy deploy --stage production
+cd packages/infra && pnpm exec alchemy deploy --stage prod
+```
+
+### Production deploy script
+
+Use `pnpm run deploy:prod` (or `./scripts/deploy-prod.sh`) for prod deploys. It takes no arguments: it runs migrations, deploys stage `prod`, and prints verify commands against the static prod domains.
+
+```bash
+pnpm run deploy:prod
 ```
 
 ### Production origins
 
-- Required after the first deploy: set `CORS_ORIGIN` in `apps/server/.env` to the exact deployed web origin, such as `https://app.example.com`, then deploy the server again.
-- To allow an additional exact origin (for example a custom domain alongside the workers.dev web URL), set `CORS_EXTRA_ORIGINS` to a comma-separated list of exact origins with no wildcards, such as `https://notetaker-app.sznm.dev`, then deploy the server again.
+Prod domains and CORS are static (exact origins, no wildcards):
+
+- Web: `https://notetaker-app.sznm.dev`
+- API: `https://notetaker-api.sznm.dev`
+- Prod `CORS_ORIGIN` is the web custom domain above, set as a literal in `packages/infra/alchemy.run.ts`, so local `localhost` values in `apps/server/.env` stay dev-only. Dev keeps `CORS_ORIGIN=http://localhost:3001` from env.
+- `CORS_EXTRA_ORIGINS` remains an optional env override (default empty) for transition, e.g. a workers.dev web URL during cutover; it is never required in prod.
+
+Notes:
+
+- The script never writes to local `.env` files.
+- The existing `fft` R2 bucket is adopted by name and retained on stack removal, so prod deploys are a noop for stored audio.
+- Provider auth comes from `~/.alchemy` (`pnpm run infra:login`); the script reads no secrets, so a missing login is the only expected setup failure.
+
+Verify after deploy:
+
+```bash
+curl -sS "https://notetaker-api.sznm.dev/"
+curl -sS -o /dev/null -w "%{http_code}\n" "https://notetaker-app.sznm.dev/"
+curl -sS -D - -o /dev/null -H "Origin: https://notetaker-app.sznm.dev" "https://notetaker-api.sznm.dev/" | grep -i access-control-allow-origin
+curl -sS -D - -o /dev/null -H "Origin: https://evil.example.com" "https://notetaker-api.sznm.dev/" | grep -i access-control-allow-origin && echo "CORS CHECK FAILED" || echo "CORS OK"
+```
 
 ## Git Hooks and Formatting
 

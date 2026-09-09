@@ -31,6 +31,11 @@ export const audioBucket = R2.Bucket("fft", {
 	name: "fft",
 }).pipe(retain());
 
+// Static prod origins (exact, no wildcards). The workers.dev web URL is
+// unknown at author time, so prod keeps CORS_EXTRA_ORIGINS as an optional
+// env override for transition; it defaults to empty and is never required.
+const PROD_WEB_ORIGIN = "https://notetaker-app.sznm.dev";
+
 export const server = gen(function* () {
 	const stage = yield* Stage;
 	const isProd = stage === "prod";
@@ -53,7 +58,7 @@ export const server = gen(function* () {
 				configString("CORS_EXTRA_ORIGINS"),
 				""
 			),
-			CORS_ORIGIN: configString("CORS_ORIGIN"),
+			CORS_ORIGIN: isProd ? PROD_WEB_ORIGIN : configString("CORS_ORIGIN"),
 			DATABASE_URL: configRedacted("DATABASE_URL"),
 			DEEPGRAM_API_KEY: configRedacted("DEEPGRAM_API_KEY"),
 			GROQ_API_KEY: configWithDefault(
