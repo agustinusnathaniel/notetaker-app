@@ -86,13 +86,27 @@ Review the dry-run and diff before merging updates. Do not use `--overwrite`, be
 
 If you want to add app-specific blocks instead of shared primitives, run the shadcn CLI from `apps/web`.
 
-## Speech-to-text demo
+## Meetings golden path
 
-The `/transcribe` page includes a small accessible upload form that sends audio directly to `POST /transcribe`. The endpoint accepts a raw, non-empty request body with an `audio/*` Content-Type and enforces a 4 MiB maximum using both Content-Length and streamed byte length. The Worker reads at most 4 MiB + 1 byte before cancelling an oversized stream. This conservative limit leaves room for Whisper's required `number[]` input within the Workers 128 MB isolate limit. When browsers provide an empty file MIME type, the UI only resolves known `.aac`, `.flac`, `.m4a`, `.mp3`, `.oga`, `.ogg`, `.opus`, `.wav`, and `.webm` extensions. A successful response is JSON in the form `{ "text": "..." }`. Errors use `{ "error": { "code": "...", "message": "..." } }` and do not expose provider details.
+The meetings flow is the local golden path: upload audio at `/meetings/new`, then review transcript, summary, takeaways, and action items at `/meetings/$meetingId`.
 
-The server Worker receives its typed Workers AI binding from Alchemy with `AI: Cloudflare.Workers.AI()` in `packages/infra/alchemy.run.ts`. It calls the Cloudflare-hosted `@cf/openai/whisper` model. The complete validation, bounded body read, and provider workflow is an Effect program using the published `effect@4.0.0-rc.112` release. Expected failures are mapped to the fixed API error contract before the program is run at the Hono handler boundary. This repository deliberately has no Wrangler configuration for the binding: Alchemy is the infrastructure source of truth, and credentials remain in the trusted runtime environment rather than source files.
+1. Configure `apps/server/.env` with Neon pooled `DATABASE_URL` plus `DATABASE_MIGRATION_URL`, R2 bucket settings, `DEEPGRAM_API_KEY`, and optional `GROQ_API_KEY` fallback for summaries. Configure `apps/web/.env` with `VITE_SERVER_URL=http://localhost:3000`.
+2. Apply migrations from the repo root:
 
-Workers AI inference is remote during local development and can incur usage charges. Do not use the upload form for local smoke tests unless remote inference is intentionally configured. No recording, persistence, authentication, response streaming, deployment, or credentials are included in this example.
+```bash
+pnpm run db:migrate
+```
+
+3. Start both apps from the repo root:
+
+```bash
+pnpm run dev
+```
+
+Open [http://localhost:3001](http://localhost:3001) for the web app. The API serves `/api/meetings` at [http://localhost:3000](http://localhost:3000).
+
+4. Upload a non-empty `audio/*` file up to 25 MiB from `/meetings/new`. The client creates a draft, uploads audio with `PUT /api/meetings/:id/audio`, then triggers `POST /api/meetings/:id/transcription` and `POST /api/meetings/:id/summary`. On success it redirects to the meeting detail page.
+5. If processing fails, the detail page shows the failed stage with `Retry transcription` (when audio is stored) or `Retry summary` (when a transcript exists), plus `Reload` and `Back Home`. Errors use the stable shape `{ "error": { "code": "...", "message": "..." } }` and never expose provider details or keys. Audio stays private in R2.
 
 ## Deployment
 
@@ -136,8 +150,9 @@ notetaker-app/
 
 The server keeps the Hono adapter in `apps/server/src/index.ts` and mounts focused
 route modules from `apps/server/src/routes/health.ts` and
-`apps/server/src/routes/transcribe.ts`. The web app exposes the home page and the
-accessible `/transcribe` UI, which calls the `/transcribe` API endpoint.
+`apps/server/src/routes/meetings.ts`. The web app exposes the home page, the
+accessible `/meetings/new` upload flow, and the `/meetings/$meetingId` detail
+page, which call the `/api/meetings` endpoints.
 
 ## Available Scripts
 

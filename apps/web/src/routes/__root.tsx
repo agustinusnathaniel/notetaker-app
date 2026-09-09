@@ -4,25 +4,25 @@ import {
 	HeadContent,
 	Outlet,
 } from "@tanstack/react-router";
-import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 
 import Header from "@/components/header";
 import { ThemeProvider } from "@/components/theme-provider";
 
 import "../index.css";
 
-export interface RouterAppContext {}
+// biome-ignore lint/complexity/noBannedTypes: TanStack scaffold requires an object type for the router context.
+export type RouterAppContext = {};
 
 export const Route = createRootRouteWithContext<RouterAppContext>()({
 	component: RootComponent,
 	head: () => ({
 		meta: [
 			{
-				title: "notetaker-app",
+				title: "Meetings - notetaker-app",
 			},
 			{
 				name: "description",
-				content: "notetaker-app is a web application",
+				content: "Review meeting recordings, transcripts, and notes.",
 			},
 		],
 		links: [
@@ -50,7 +50,6 @@ function RootComponent() {
 				</div>
 				<Toaster richColors />
 			</ThemeProvider>
-			<TanStackRouterDevtools position="bottom-left" />
 		</>
 	);
 }

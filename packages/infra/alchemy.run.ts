@@ -1,12 +1,23 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
+import { retain } from "alchemy/RemovalPolicy";
 import { config } from "dotenv";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
+import { make as makeRedacted } from "effect/Redacted";
 
 config({ path: "./.env" });
 config({ path: "../../apps/web/.env" });
 config({ path: "../../apps/server/.env" });
+
+// Existing private R2 bucket (R2_BUCKET_NAME=fft in apps/server/.env).
+// Alchemy-managed (R2_MANAGED_BY_ALCHEMY=true): this declaration adopts the
+// existing bucket by name instead of creating a duplicate. Retained on
+// stack removal so stored audio survives; R2 has no ownership tags so a
+// same-named bucket is silently adopted rather than recreated.
+export const audioBucket = Cloudflare.R2.Bucket("fft", {
+	name: "fft",
+}).pipe(retain());
 
 export const server = Cloudflare.Worker("server", {
 	compatibility: {
@@ -17,8 +28,14 @@ export const server = Cloudflare.Worker("server", {
 	},
 	env: {
 		AI: Cloudflare.Workers.AI(),
+		AUDIO_BUCKET: audioBucket,
 		CORS_ORIGIN: Config.string("CORS_ORIGIN"),
 		DATABASE_URL: Config.redacted("DATABASE_URL"),
+		DEEPGRAM_API_KEY: Config.redacted("DEEPGRAM_API_KEY"),
+		GROQ_API_KEY: Config.withDefault(
+			Config.redacted("GROQ_API_KEY"),
+			makeRedacted("")
+		),
 	},
 	main: "../../apps/server/src/index.ts",
 });

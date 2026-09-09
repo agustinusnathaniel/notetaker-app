@@ -197,6 +197,9 @@ importers:
       dotenv:
         specifier: 'catalog:'
         version: 17.4.2
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2
       effect:
         specifier: 4.0.0-rc.112
         version: 4.0.0-rc.112
