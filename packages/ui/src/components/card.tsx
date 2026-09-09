@@ -71,7 +71,7 @@ export function CardFrameTitle({
   ...props
 }: useRender.ComponentProps<"div">): React.ReactElement {
   const defaultProps = {
-    className: cn("self-center font-semibold text-sm", className),
+    className: cn("self-center font-heading font-semibold text-sm", className),
     "data-slot": "card-frame-title",
   };
 

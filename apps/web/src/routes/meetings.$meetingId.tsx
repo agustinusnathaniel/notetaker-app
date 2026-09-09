@@ -1067,7 +1067,7 @@ function MeetingDetail(): React.ReactElement {
 						className="min-w-0"
 					>
 						<h2
-							className="mb-1 font-medium text-sm"
+							className="mb-1 font-heading font-medium text-sm"
 							id="meeting-description-heading"
 						>
 							Description
@@ -1078,7 +1078,10 @@ function MeetingDetail(): React.ReactElement {
 
 				{meeting.audioAvailable ? (
 					<section aria-labelledby="meeting-audio-heading" className="min-w-0">
-						<h2 className="mb-1 font-medium text-sm" id="meeting-audio-heading">
+						<h2
+							className="mb-1 font-heading font-medium text-sm"
+							id="meeting-audio-heading"
+						>
 							Audio
 						</h2>
 						{/* biome-ignore lint/a11y/useMediaCaption: the transcript section below is the text alternative for this recording. */}

@@ -995,7 +995,10 @@ function NewMeeting(): React.ReactElement {
 				className="flex flex-col gap-4"
 			>
 				<div className="flex flex-wrap items-center justify-between gap-3">
-					<h1 className="font-semibold text-xl" id="new-meeting-title">
+					<h1
+						className="font-heading font-semibold text-xl"
+						id="new-meeting-title"
+					>
 						New meeting
 					</h1>
 					<Button render={<Link to="/" />} variant="link">
